@@ -29,20 +29,14 @@ $authenticated = retroIsAuthenticated();
   <div class="grain"></div>
   <main class="shell">
     <?php if (!$authenticated): ?>
-    <section id="loginView" class="login-view" aria-labelledby="loginTitle">
-      <div class="brand-mark" aria-hidden="true">R<span>/</span>W</div>
-      <p class="eyebrow">PRIVATE ARCHIVE // 01</p>
-      <h1 id="loginTitle">A régi web<br><em>nyomában.</em></h1>
-      <p class="intro">Belépés után kereshetsz a Wayback Machine több évtizednyi webes pillanatképei között.</p>
+    <section id="loginView" class="login-view" aria-label="Belépés">
       <form id="loginForm" class="login-form">
-        <label for="password">Hozzáférési jelszó</label>
         <div class="input-row">
-          <input id="password" name="password" type="password" autocomplete="current-password" required placeholder="••••••••">
-          <button class="icon-button" type="submit" aria-label="Belépés" title="Belépés">→</button>
+          <input id="password" name="password" type="password" autocomplete="current-password" required aria-label="Jelszó" placeholder="••••••••">
+          <button class="icon-button" type="submit" aria-label="Belépés">→</button>
         </div>
         <p id="loginError" class="message error" role="alert"></p>
       </form>
-      <div class="login-meta"><span>WAYBACK MACHINE</span><span>PRIVATE ACCESS</span><span>2026</span></div>
     </section>
     <?php else: ?>
     <section id="appView" class="app-view" aria-labelledby="appTitle">
