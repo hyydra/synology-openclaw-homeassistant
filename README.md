@@ -4,6 +4,14 @@ Privát, jelszóval védett helyi Wayback-archívumkereső a pecscitythings.eu H
 
 A böngészős keresés nem élőben kérdezi le a Wayback Machine-t. A `bin/index-wayback.php` CLI indexelő előre letölti a konfigurált pécsi/környékbeli domainek archivált HTML oldalait, kinyeri a látható szöveget, és SQLite FTS5 indexbe menti. A webes kereső ezután gyorsan, helyben keres a mentett oldalak szövegében.
 
+## Obsidian projektjegyzet
+
+A projekt állapotjegyzete a Google Drive-os Obsidian vaultban található:
+
+```text
+__obsidian/obsidian/Retro Kereső.md
+```
+
 ## Biztonság
 
 A valódi hozzáférési jelszó **nem kerül a repóba**. Az alkalmazás csak PHP session után használható, és az API keresési végpontja is védett.
