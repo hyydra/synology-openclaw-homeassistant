@@ -31,8 +31,9 @@ function retroHttpGetWithRetry(string $url, int $connectTimeout = 5, int $timeou
     return $last;
 }
 
-$configPath = dirname(__DIR__) . '/config/sources.php';
-$archiveBaseDir = dirname(__DIR__) . '/data/archive';
+$projectRoot = dirname(__DIR__);
+$configPath = $projectRoot . '/config/sources.php';
+$archiveBaseDir = retroArchiveDataDir($projectRoot) . '/archive';
 $db = retroArchiveDatabase();
 retroEnsureArchiveSchema($db);
 $sources = retroLoadSources($configPath);
