@@ -93,10 +93,11 @@ $query = http_build_query([
     'url' => $target,
     'output' => 'json',
     'fl' => 'timestamp,original,statuscode,mimetype,digest,length',
-    'filter' => ['statuscode:200', 'mimetype:text/html'],
     'collapse' => 'digest',
     'limit' => '60',
 ]);
+$query .= '&filter=statuscode%3A200&filter=mimetype%3Atext%2Fhtml';
+
 $curl = curl_init('https://web.archive.org/cdx/search/cdx?' . $query);
 curl_setopt_array($curl, [
     CURLOPT_RETURNTRANSFER => true,
