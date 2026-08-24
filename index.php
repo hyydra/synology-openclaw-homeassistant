@@ -40,16 +40,17 @@ $appVersion = (string) filemtime(__DIR__ . '/app.js');
       </form>
     </section>
     <?php else: ?>
-    <section id="appView" class="app-view" aria-label="Wayback kereső">
+    <section id="appView" class="app-view" aria-label="Archívum kereső">
       <header class="topbar">
         <div class="brand">RETRO KERESŐ</div>
         <button id="logoutButton" class="logout-button" type="button">Kijelentkezés</button>
       </header>
 
       <form id="searchForm" class="search-form">
-        <label for="url">Wayback Machine keresés</label>
+        <label for="query">Kulcsszavas keresés</label>
+        <p class="search-description">Keress kulcsszavakra Pécs és környéke archivált weboldalain. A találatok a Wayback Machine-ből helyben indexelt oldalak szövegében keresnek.</p>
         <div class="search-row">
-          <input id="url" name="url" type="text" inputmode="url" autocomplete="url" placeholder="example.com vagy example.com/*" required>
+          <input id="query" name="query" type="search" autocomplete="off" placeholder="pécs, zsolnay, uránváros…" required>
           <button class="search-button" type="submit">Keresés</button>
         </div>
         <p id="searchError" class="message error" role="alert"></p>
