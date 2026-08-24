@@ -11,7 +11,8 @@ if (!is_string($index)) {
 // The unauthenticated view must contain only the password form UI.
 $loginStart = strpos($index, '<?php if (!$authenticated): ?>');
 $appStart = strpos($index, '<?php else: ?>', $loginStart === false ? 0 : $loginStart);
-if ($loginStart === false || $appStart === false) {
+$conditionalEnd = strpos($index, '<?php endif; ?>', $appStart === false ? 0 : $appStart);
+if ($loginStart === false || $appStart === false || $conditionalEnd === false) {
     fwrite(STDERR, "FAIL: login/app conditional structure missing\n");
     exit(1);
 }
@@ -29,6 +30,13 @@ foreach (['id="password"', 'id="loginForm"', 'id="loginError"'] as $required) {
         fwrite(STDERR, "FAIL: login view missing {$required}\n");
         exit(1);
     }
+}
+
+// Build/version credits may remain in the application, but only inside the authenticated branch.
+$authenticatedMarkup = substr($index, $appStart, $conditionalEnd - $appStart);
+if (!str_contains($authenticatedMarkup, 'build-version')) {
+    fwrite(STDERR, "FAIL: build/version info is not restricted to authenticated view\n");
+    exit(1);
 }
 
 fwrite(STDOUT, "PASS\n");
