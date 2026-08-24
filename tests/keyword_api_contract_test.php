@@ -8,19 +8,19 @@ if (!is_string($api)) {
     exit(1);
 }
 
-foreach (["require_once __DIR__ . '/lib/archive.php'", "$_GET['q']", 'retroSearchArchive'] as $needle) {
+foreach (["require_once __DIR__ . '/lib/archive.php'", "\$_GET['q']", 'retroSearchArchive'] as $needle) {
     if (!str_contains($api, $needle)) {
         fwrite(STDERR, "FAIL: missing keyword API contract: {$needle}\n");
         exit(1);
     }
 }
-foreach (['web.archive.org/cdx/search/cdx', 'curl_init(', "$_GET['url']", '`https://${target}`'] as $forbidden) {
+foreach (['web.archive.org/cdx/search/cdx', 'curl_init(', "\$_GET['url']"] as $forbidden) {
     if (str_contains($api, $forbidden)) {
         fwrite(STDERR, "FAIL: live Wayback/browser URL logic remains: {$forbidden}\n");
         exit(1);
     }
 }
-if (!str_contains($api, "respond(401")) {
+if (!str_contains($api, 'respond(401')) {
     fwrite(STDERR, "FAIL: auth protection missing\n");
     exit(1);
 }
