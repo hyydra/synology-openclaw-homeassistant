@@ -4,6 +4,12 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../lib/archive.php';
 
+$prefixQuery = retroFtsQuery('pécs');
+if ($prefixQuery !== '"pécs"*') {
+    fwrite(STDERR, "FAIL: keyword query must use prefix matching\n");
+    exit(1);
+}
+
 $root = sys_get_temp_dir() . '/retro-search-' . bin2hex(random_bytes(4));
 $db = retroArchiveDatabase($root . '/retro.sqlite');
 retroEnsureArchiveSchema($db);
