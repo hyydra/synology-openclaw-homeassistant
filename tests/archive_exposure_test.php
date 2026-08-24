@@ -14,8 +14,8 @@ if (!is_string($gitignore) || !str_contains($gitignore, '/data/archive/')) {
     fwrite(STDERR, "FAIL: raw archive files must be ignored by git\n");
     exit(1);
 }
-if (!is_string($indexer) || !str_contains($indexer, "'/data/archive'")) {
-    fwrite(STDERR, "FAIL: indexer must store snapshots in protected data/archive\n");
+if (!is_string($indexer) || !str_contains($indexer, 'retroArchiveDataDir(') || !str_contains($indexer, "'/archive'")) {
+    fwrite(STDERR, "FAIL: indexer must store snapshots in the external archive data directory\n");
     exit(1);
 }
 

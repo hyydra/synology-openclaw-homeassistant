@@ -15,18 +15,11 @@ mkdir($tmp, 0700, true);
 $configPath = $tmp . '/retro-config.php';
 $password = 'Example-Pass-123!';
 
-$cmd = sprintf(
-    'RETRO_CONFIG_PATH=%s RETRO_PASSWORD=%s php %s 2>&1',
-    escapeshellarg($configPath),
-    escapeshellarg($password),
-    escapeshellarg($script)
-);
-exec($cmd, $output, $code);
-
-if ($code !== 0) {
-    fwrite(STDERR, "FAIL: script exited with $code\n" . implode("\n", $output) . "\n");
-    exit(1);
-}
+putenv('RETRO_CONFIG_PATH=' . $configPath);
+putenv('RETRO_PASSWORD=' . $password);
+require $script;
+putenv('RETRO_CONFIG_PATH');
+putenv('RETRO_PASSWORD');
 
 $config = require $configPath;
 $hash = $config['password_hash'] ?? '';
