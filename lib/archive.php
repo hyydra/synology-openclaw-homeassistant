@@ -233,6 +233,19 @@ function retroArchivePath(string $baseDir, string $domain, string $timestamp, st
     return rtrim($baseDir, '/\\') . DIRECTORY_SEPARATOR . $safeDomain . DIRECTORY_SEPARATOR . $safeTimestamp . '-' . $hash . '.html';
 }
 
+function retroArchiveUrlIsIndexable(string $originalUrl): bool
+{
+    $path = parse_url($originalUrl, PHP_URL_PATH);
+    if (!is_string($path)) {
+        return false;
+    }
+    $decodedPath = rawurldecode($path);
+    if (str_contains(strtolower($path), '%ef%bf%bc') || str_contains($decodedPath, "\u{FFFC}")) {
+        return false;
+    }
+    return preg_match('~(?:^|/)404(?:/|$)~', $decodedPath) !== 1;
+}
+
 function retroSnapshotExists(PDO $db, string $originalUrl, string $timestamp): bool
 {
     $statement = $db->prepare('SELECT 1 FROM archive_pages WHERE original_url = :url AND wayback_timestamp = :timestamp LIMIT 1');

@@ -75,6 +75,11 @@ foreach ($sources as $source) {
             $failed++;
             continue;
         }
+        if (!retroArchiveUrlIsIndexable($original)) {
+            fwrite(STDOUT, "[{$domain}] kihagyva minőségi szűrővel: {$original}\n");
+            $skipped++;
+            continue;
+        }
         if (retroSnapshotExists($db, $original, $timestamp)) {
             $skipped++;
             continue;
