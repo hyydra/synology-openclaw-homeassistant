@@ -94,6 +94,9 @@ function retroExtractArchivedPage(string $html): array
     if ($html === '') {
         return ['title' => '', 'text' => ''];
     }
+    if (!class_exists('DOMDocument')) {
+        throw new RuntimeException('A PHP DOM bővítmény nem érhető el.');
+    }
 
     $previous = libxml_use_internal_errors(true);
     try {
@@ -342,7 +345,7 @@ function retroFtsQuery(string $query): string
         return '';
     }
     return implode(' AND ', array_map(
-        static fn(string $term): string => '"' . str_replace('"', '""', $term) . '"',
+        static fn(string $term): string => '"' . str_replace('"', '""', $term) . '"*',
         $terms
     ));
 }
