@@ -89,6 +89,15 @@ széchenyi tér
 
 A `GET /api.php?action=search&q=...` végpont csak a helyi SQLite FTS5 indexet kérdezi le; normál keresés közben nem hívja a Wayback Machine-t.
 
+## Credits
+
+The CDX sampling and Wayback downloading workflow was informed by ideas and behavior from these open-source projects:
+
+- `jsvine/waybackpack`
+- `hartator/wayback-machine-downloader`
+
+This project does not claim that their source code was copied verbatim; the credit is for implementation ideas and workflow inspiration.
+
 ## Ellenőrzés
 
 A feature telepítése után futtasd:
