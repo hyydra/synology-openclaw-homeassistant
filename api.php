@@ -66,7 +66,8 @@ if (!retroIsAuthenticated()) {
 }
 
 $query = trim((string) ($_GET['q'] ?? ''));
-if ($query === '' || mb_strlen($query, 'UTF-8') > 200) {
+$queryLength = function_exists('mb_strlen') ? mb_strlen($query, 'UTF-8') : strlen($query);
+if ($query === '' || $queryLength > 200) {
     respond(400, ['error' => 'Adj meg egy 1–200 karakteres keresőkifejezést.']);
 }
 
