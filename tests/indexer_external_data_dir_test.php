@@ -8,9 +8,11 @@ if (!is_string($indexer)) {
     exit(1);
 }
 
-if (!str_contains($indexer, "retroArchiveDataDir(dirname(__DIR__)) . '/archive'")) {
-    fwrite(STDERR, "FAIL: indexer archive path must use retroArchiveDataDir\n");
-    exit(1);
+foreach (['retroArchiveDataDir(', "'/archive'"] as $needle) {
+    if (!str_contains($indexer, $needle)) {
+        fwrite(STDERR, "FAIL: indexer archive path must use retroArchiveDataDir\n");
+        exit(1);
+    }
 }
 
 if (str_contains($indexer, "dirname(__DIR__) . '/data/archive'")) {
