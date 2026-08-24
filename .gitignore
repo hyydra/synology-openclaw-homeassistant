@@ -1,4 +1,6 @@
 /data/*.sqlite
+/data/*.sqlite-*
+/data/archive/
 /config.php
 /retro-config.php
 *.log
