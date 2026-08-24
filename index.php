@@ -12,6 +12,8 @@ header('Referrer-Policy: no-referrer');
 header("Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'");
 
 $authenticated = retroIsAuthenticated();
+$stylesVersion = (string) filemtime(__DIR__ . '/styles.css');
+$appVersion = (string) filemtime(__DIR__ . '/app.js');
 ?>
 <!doctype html>
 <html lang="hu">
@@ -23,7 +25,7 @@ $authenticated = retroIsAuthenticated();
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/styles.css?v=<?= htmlspecialchars($stylesVersion, ENT_QUOTES, 'UTF-8') ?>">
 </head>
 <body data-authenticated="<?= $authenticated ? 'true' : 'false' ?>">
   <main class="shell">
@@ -64,6 +66,6 @@ $authenticated = retroIsAuthenticated();
     </section>
     <?php endif; ?>
   </main>
-  <script src="/app.js" type="module"></script>
+  <script src="/app.js?v=<?= htmlspecialchars($appVersion, ENT_QUOTES, 'UTF-8') ?>" type="module"></script>
 </body>
 </html>
