@@ -15,16 +15,26 @@ A `retro-config.example.php` csak minta, valódi hash nem található benne.
 
 ## Hostinger telepítés
 
-A repo webes fájljai a pecscitythings.eu `public_html` könyvtárába kerülnek. A szerveren a `public_html` mellett hozd létre a `retro-config.php` fájlt a minta alapján, majd adj meg benne `password_hash()` által készített hash-t.
+A repo webes fájljai a pecscitythings.eu `public_html` könyvtárába kerülnek. A `data` könyvtárnak PHP számára írhatónak kell lennie. A létrejövő `data/retro.sqlite` nincs verziókezelve és közvetlen HTTP-hozzáférése tiltott.
 
-A `data` könyvtárnak PHP számára írhatónak kell lennie. A létrejövő `data/retro.sqlite` nincs verziókezelve és közvetlen HTTP-hozzáférése tiltott.
+### Jelszó beállítása
+
+A szerveren a projekt könyvtárából futtasd:
+
+```bash
+php bin/set-password.php
+```
+
+A script kétszer bekéri a jelszót, `password_hash()` segítségével biztonságos hash-t készít, majd automatikusan létrehozza vagy frissíti a webrooton kívüli `retro-config.php` fájlt. A jelszó legalább 12 karakteres legyen.
 
 ## Ellenőrzés
 
 ```bash
 php tests/auth_test.php
 php tests/security_contract_test.php
+php tests/set_password_test.php
 php -l auth.php
 php -l api.php
 php -l index.php
+php -l bin/set-password.php
 ```
