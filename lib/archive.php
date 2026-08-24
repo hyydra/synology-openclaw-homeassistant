@@ -2,9 +2,22 @@
 
 declare(strict_types=1);
 
+function retroArchiveDataDir(?string $projectRoot = null): string
+{
+    $projectRoot ??= dirname(__DIR__);
+    $projectRoot = rtrim($projectRoot, '/\\');
+    $external = dirname($projectRoot) . DIRECTORY_SEPARATOR . 'retro-data';
+
+    if (is_dir($external)) {
+        return $external;
+    }
+
+    return $projectRoot . DIRECTORY_SEPARATOR . 'data';
+}
+
 function retroArchiveDatabase(?string $path = null): PDO
 {
-    $path ??= dirname(__DIR__) . '/data/retro.sqlite';
+    $path ??= retroArchiveDataDir() . '/retro.sqlite';
     $directory = dirname($path);
     if (!is_dir($directory) && !mkdir($directory, 0770, true) && !is_dir($directory)) {
         throw new RuntimeException('Az archívum adatkönyvtára nem hozható létre.');
