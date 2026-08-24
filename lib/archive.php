@@ -240,9 +240,6 @@ function retroArchiveUrlIsIndexable(string $originalUrl): bool
         return false;
     }
     $decodedPath = rawurldecode($path);
-    if (str_contains(strtolower($path), '%ef%bf%bc') || str_contains($decodedPath, "\u{FFFC}")) {
-        return false;
-    }
     return preg_match('~(?:^|/)404(?:/|$)~', $decodedPath) !== 1;
 }
 
