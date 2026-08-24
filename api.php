@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/lib/archive.php';
+require_once __DIR__ . '/lib/logger.php';
 retroStartSession();
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
 header('X-Content-Type-Options: nosniff');
+// Expose only the generated correlation id; internal log details remain server-side.
+header('X-Request-ID: ' . retroRequestId());
 
 function respond(int $status, array $data): never
 {
@@ -33,17 +36,27 @@ if ($action === 'login' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     $body = requestBody();
     try {
         $passwordHash = retroPasswordHash();
-    } catch (RuntimeException) {
+    } catch (RuntimeException $error) {
+        retroLog('error', 'authentication_not_configured', retroExceptionContext($error, [
+            'action' => 'login',
+        ]));
         respond(500, ['error' => 'A hozzáférés nincs konfigurálva.']);
     }
 
     if (!retroVerifyPassword((string) ($body['password'] ?? ''), $passwordHash)) {
+        // Never include the submitted password or request body in authentication logs.
+        retroLog('warning', 'login_failed', [
+            'action' => 'login',
+        ]);
         usleep(250000);
         respond(401, ['error' => 'Hibás jelszó.']);
     }
 
     session_regenerate_id(true);
     $_SESSION['retro_authenticated'] = true;
+    retroLog('info', 'login_succeeded', [
+        'action' => 'login',
+    ]);
     respond(200, ['ok' => true]);
 }
 
@@ -54,20 +67,34 @@ if ($action === 'logout' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         setcookie(session_name(), '', time() - 42000, $params['path'], $params['domain'], $params['secure'], $params['httponly']);
     }
     session_destroy();
+    retroLog('info', 'logout_succeeded', [
+        'action' => 'logout',
+    ]);
     respond(200, ['ok' => true]);
 }
 
 if ($action !== 'search') {
+    retroLog('warning', 'unknown_api_action', [
+        'action' => (string) $action,
+        'method' => (string) ($_SERVER['REQUEST_METHOD'] ?? ''),
+    ]);
     respond(404, ['error' => 'Ismeretlen művelet.']);
 }
 
 if (!retroIsAuthenticated()) {
+    retroLog('warning', 'unauthenticated_search', [
+        'action' => 'search',
+    ]);
     respond(401, ['error' => 'A kereséshez bejelentkezés szükséges.']);
 }
 
 $query = trim((string) ($_GET['q'] ?? ''));
 $queryLength = function_exists('mb_strlen') ? mb_strlen($query, 'UTF-8') : strlen($query);
 if ($query === '' || $queryLength > 200) {
+    // Log only the length, not the search phrase itself, to minimize retention of user-entered text.
+    retroLog('warning', 'invalid_search_query', [
+        'query_length' => $queryLength,
+    ]);
     respond(400, ['error' => 'Adj meg egy 1–200 karakteres keresőkifejezést.']);
 }
 
@@ -76,8 +103,16 @@ try {
     retroEnsureArchiveSchema($database);
     $items = retroSearchArchive($database, $query, 20);
 } catch (RuntimeException $error) {
-    respond(500, ['error' => $error->getMessage()]);
-} catch (Throwable) {
+    retroLog('error', 'archive_search_failed', retroExceptionContext($error, [
+        'query_length' => $queryLength,
+        'error_type' => 'runtime',
+    ]));
+    respond(500, ['error' => 'A helyi archívum keresése nem sikerült.']);
+} catch (Throwable $error) {
+    retroLog('error', 'archive_search_failed', retroExceptionContext($error, [
+        'query_length' => $queryLength,
+        'error_type' => 'unexpected',
+    ]));
     respond(500, ['error' => 'A helyi archívum keresése nem sikerült.']);
 }
 
