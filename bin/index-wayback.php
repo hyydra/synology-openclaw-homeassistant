@@ -9,6 +9,28 @@ if (PHP_SAPI !== 'cli') {
 
 require_once dirname(__DIR__) . '/lib/archive.php';
 
+/** @return array{ok:bool,status:int,body:string,error:string,errno:int} */
+function retroHttpGetWithRetry(string $url, int $connectTimeout = 5, int $timeout = 30, int $attempts = 3): array
+{
+    $attempts = max(1, $attempts);
+    $last = ['ok' => false, 'status' => 0, 'body' => '', 'error' => '', 'errno' => 0];
+
+    for ($attempt = 1; $attempt <= $attempts; $attempt++) {
+        $last = retroHttpGet($url, $connectTimeout, $timeout);
+        if ($last['ok']) {
+            return $last;
+        }
+
+        if ($attempt < $attempts) {
+            $backoffSeconds = 2 ** $attempt;
+            fwrite(STDERR, "  hálózati hiba, újrapróbálás {$backoffSeconds} mp múlva ({$attempt}/{$attempts})...\n");
+            sleep($backoffSeconds);
+        }
+    }
+
+    return $last;
+}
+
 $configPath = dirname(__DIR__) . '/config/sources.php';
 $archiveBaseDir = dirname(__DIR__) . '/data/archive';
 $db = retroArchiveDatabase();
@@ -24,7 +46,7 @@ foreach ($sources as $source) {
     $limit = $source['limit'];
     fwrite(STDOUT, "[{$domain}] CDX lista lekérése...\n");
 
-    $cdx = retroHttpGet(retroBuildCdxUrl($domain, $limit), 3, 15);
+    $cdx = retroHttpGetWithRetry(retroBuildCdxUrl($domain, $limit), 5, 30, 3);
     if (!$cdx['ok']) {
         fwrite(STDERR, "[{$domain}] CDX hiba HTTP {$cdx['status']}: {$cdx['error']}\n");
         $failed++;
@@ -37,6 +59,7 @@ foreach ($sources as $source) {
         continue;
     }
 
+    $consecutiveFailures = 0;
     foreach (array_slice($rows, 1) as $row) {
         if (!is_array($row) || count($row) < 6) {
             $failed++;
@@ -57,14 +80,20 @@ foreach ($sources as $source) {
 
         $fetchUrl = retroWaybackUrl($timestamp, $original, true);
         fwrite(STDOUT, "[{$domain}] {$timestamp} {$original}\n");
-        $snapshot = retroHttpGet($fetchUrl, 3, 20);
+        $snapshot = retroHttpGetWithRetry($fetchUrl, 5, 30, 3);
         if (!$snapshot['ok'] || trim($snapshot['body']) === '') {
             fwrite(STDERR, "  hiba HTTP {$snapshot['status']}: {$snapshot['error']}\n");
             $failed++;
-            usleep(150000);
+            $consecutiveFailures++;
+            if ($consecutiveFailures >= 5) {
+                fwrite(STDERR, "[{$domain}] 5 egymást követő hálózati hiba, a domain feldolgozása megszakad.\n");
+                break;
+            }
+            usleep(1000000);
             continue;
         }
 
+        $consecutiveFailures = 0;
         try {
             retroStoreSnapshot($db, [
                 'domain' => $domain,
@@ -78,7 +107,7 @@ foreach ($sources as $source) {
             $failed++;
         }
 
-        usleep(150000);
+        usleep(1000000);
     }
 }
 
