@@ -13,7 +13,7 @@ function requireSimpleUi(bool $condition, string $message): void
 }
 
 requireSimpleUi(strpos($index, 'id="searchForm"') !== false, 'search form must remain');
-requireSimpleUi(strpos($index, 'id="url"') !== false, 'URL input must remain');
+requireSimpleUi(strpos($index, 'id="query"') !== false, 'keyword input must remain');
 requireSimpleUi(strpos($index, 'id="results"') !== false, 'results container must remain');
 requireSimpleUi(strpos($index, 'class="hero-copy"') === false, 'large hero section must be removed');
 requireSimpleUi(strpos($index, '<h1 id="appTitle">') === false, 'large app heading must be removed');
