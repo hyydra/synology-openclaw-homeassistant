@@ -37,6 +37,7 @@ $archiveBaseDir = retroArchiveDataDir($projectRoot) . '/archive';
 $db = retroArchiveDatabase();
 retroEnsureArchiveSchema($db);
 $sources = retroLoadSources($configPath);
+$limitOverride = retroIndexLimitOverride($argv);
 
 $indexed = 0;
 $skipped = 0;
@@ -44,7 +45,7 @@ $failed = 0;
 
 foreach ($sources as $source) {
     $domain = $source['domain'];
-    $limit = $source['limit'];
+    $limit = $limitOverride ?? $source['limit'];
     fwrite(STDOUT, "[{$domain}] CDX lista lekérése...\n");
 
     $cdx = retroHttpGetWithRetry(retroBuildCdxUrl($domain, $limit), 5, 30, 3);

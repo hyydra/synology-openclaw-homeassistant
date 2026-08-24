@@ -209,6 +209,22 @@ function retroLoadSources(string $path): array
     return $result;
 }
 
+/** @param array<int,string> $arguments */
+function retroIndexLimitOverride(array $arguments): ?int
+{
+    foreach (array_slice($arguments, 1) as $argument) {
+        if (!str_starts_with($argument, '--limit=')) {
+            continue;
+        }
+        $value = substr($argument, strlen('--limit='));
+        if (!preg_match('/^\d+$/', $value)) {
+            throw new InvalidArgumentException('A --limit értéke egész szám legyen.');
+        }
+        return max(1, min(200, (int) $value));
+    }
+    return null;
+}
+
 function retroArchivePath(string $baseDir, string $domain, string $timestamp, string $originalUrl): string
 {
     $safeDomain = preg_replace('/[^a-z0-9.-]+/i', '_', strtolower($domain)) ?: 'unknown';
