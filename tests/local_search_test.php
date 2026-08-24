@@ -34,7 +34,7 @@ foreach (['title', 'original', 'domain', 'timestamp', 'snippet', 'archiveUrl'] a
         exit(1);
     }
 }
-if (!str_contains(mb_strtolower($item['snippet'], 'UTF-8'), 'pécs')) {
+if (!str_contains($item['snippet'], 'pécs')) {
     fwrite(STDERR, "FAIL: snippet does not contain useful match context\n");
     exit(1);
 }
