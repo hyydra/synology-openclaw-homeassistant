@@ -98,7 +98,8 @@ $query = http_build_query([
 ]);
 $query .= '&filter=statuscode%3A200&filter=mimetype%3Atext%2Fhtml';
 
-$curl = curl_init('https://web.archive.org/cdx/search/cdx?' . $query);
+$upstreamUrl = 'https://web.archive.org/cdx/search/cdx?' . $query;
+$curl = curl_init($upstreamUrl);
 curl_setopt_array($curl, [
     CURLOPT_RETURNTRANSFER => true,
     CURLOPT_FOLLOWLOCATION => true,
@@ -107,10 +108,17 @@ curl_setopt_array($curl, [
 ]);
 $response = curl_exec($curl);
 $status = curl_getinfo($curl, CURLINFO_HTTP_CODE);
+$curlError = curl_error($curl);
+$curlErrno = curl_errno($curl);
 curl_close($curl);
 
 if ($response === false || $status < 200 || $status >= 300) {
-    respond(502, ['error' => 'Nem sikerült elérni a Wayback Machine-t.']);
+    respond(502, [
+        'error' => 'Nem sikerült elérni a Wayback Machine-t.',
+        'upstreamStatus' => $status,
+        'curlErrno' => $curlErrno,
+        'curlError' => $curlError,
+    ]);
 }
 
 $rows = json_decode($response, true);
