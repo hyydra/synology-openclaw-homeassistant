@@ -1,4 +1,5 @@
 /data/*.sqlite
 /config.php
+/retro-config.php
 *.log
 .DS_Store
