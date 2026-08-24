@@ -45,8 +45,10 @@ function renderResults(items) {
   results.replaceChildren();
   resultCount.textContent = `${items.length} TALÁLAT`;
   emptyState.classList.toggle("hidden", items.length > 0);
+
   if (!items.length) {
     resultTitle.textContent = "Nincs találat";
+    emptyState.querySelector("p").textContent = "Nincs találat a helyi archívumban.";
     return;
   }
 
@@ -62,23 +64,31 @@ function renderResults(items) {
     date.className = "card-date";
     date.textContent = formatDate(item.timestamp);
 
-    const mime = document.createElement("span");
-    mime.textContent = item.mimetype || "WEB";
+    const domain = document.createElement("span");
+    domain.className = "card-domain";
+    domain.textContent = item.domain || "";
+    top.append(date, domain);
 
-    top.append(date, mime);
+    const title = document.createElement("h3");
+    title.className = "card-title";
+    title.textContent = item.title || item.original || "Névtelen oldal";
 
     const url = document.createElement("div");
     url.className = "card-url";
-    url.textContent = item.original;
+    url.textContent = item.original || "";
+
+    const snippet = document.createElement("p");
+    snippet.className = "card-snippet";
+    snippet.textContent = item.snippet || "";
 
     const link = document.createElement("a");
     link.className = "card-link";
     link.href = item.archiveUrl;
     link.target = "_blank";
     link.rel = "noreferrer";
-    link.textContent = "MEGNYITÁS AZ ARCHÍVUMBAN ↗";
+    link.textContent = "MEGNYITÁS A WAYBACKEN ↗";
 
-    card.append(top, url, link);
+    card.append(top, title, url, snippet, link);
     results.append(card);
   }
 }
@@ -87,26 +97,25 @@ if (searchForm) {
   searchForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     searchError.textContent = "";
-    const input = document.querySelector("#url");
-    let target = input.value.trim();
-    if (!target) return;
-    if (!/^https?:\/\//i.test(target)) target = `https://${target}`;
+    const input = document.querySelector("#query");
+    const query = input.value.trim();
+    if (!query) return;
 
     results.replaceChildren();
     emptyState.classList.remove("hidden");
     emptyState.classList.add("loading");
-    emptyState.querySelector("p").textContent = "Keresés a webarchívumban...";
+    emptyState.querySelector("p").textContent = "Keresés a helyi archívumban...";
     resultCount.textContent = "";
 
     try {
-      const response = await fetch(`/api.php?action=search&url=${encodeURIComponent(target)}`);
+      const response = await fetch(`/api.php?action=search&q=${encodeURIComponent(query)}`);
       const data = await response.json();
       if (response.status === 401) {
         window.location.reload();
         return;
       }
       if (!response.ok) throw new Error(data.error || "A keresés sikertelen.");
-      renderResults(data.results);
+      renderResults(Array.isArray(data.results) ? data.results : []);
     } catch (error) {
       searchError.textContent = error.message;
       resultTitle.textContent = "Találatok";
@@ -115,10 +124,5 @@ if (searchForm) {
     } finally {
       emptyState.classList.remove("loading");
     }
-  });
-
-  document.querySelector(".example-link")?.addEventListener("click", () => {
-    document.querySelector("#url").value = "index.hu/*";
-    document.querySelector("#url").focus();
   });
 }
