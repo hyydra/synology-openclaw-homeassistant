@@ -5,10 +5,10 @@ declare(strict_types=1);
 require_once __DIR__ . '/../lib/archive.php';
 
 $base = sys_get_temp_dir() . '/retro-data-dir-' . bin2hex(random_bytes(6));
-$domainRoot = $base . '/example.test';
-$projectRoot = $domainRoot . '/public_html';
-$legacy = $projectRoot . '/data';
-$external = $domainRoot . '/retro-data';
+$domainRoot = $base . DIRECTORY_SEPARATOR . 'example.test';
+$projectRoot = $domainRoot . DIRECTORY_SEPARATOR . 'public_html';
+$legacy = $projectRoot . DIRECTORY_SEPARATOR . 'data';
+$external = $domainRoot . DIRECTORY_SEPARATOR . 'retro-data';
 
 if (!mkdir($legacy, 0770, true) && !is_dir($legacy)) {
     fwrite(STDERR, "FAIL: temp legacy dir\n");
