@@ -94,31 +94,29 @@ $query = http_build_query([
     'output' => 'json',
     'fl' => 'timestamp,original,statuscode,mimetype,digest,length',
     'collapse' => 'digest',
-    'limit' => '60',
+    'limit' => '20',
 ]);
 $query .= '&filter=statuscode%3A200&filter=mimetype%3Atext%2Fhtml';
 
-$upstreamUrl = 'https://web.archive.org/cdx/search/cdx?' . $query;
-$curl = curl_init($upstreamUrl);
+$curl = curl_init('https://web.archive.org/cdx/search/cdx?' . $query);
 curl_setopt_array($curl, [
     CURLOPT_RETURNTRANSFER => true,
     CURLOPT_FOLLOWLOCATION => true,
-    CURLOPT_TIMEOUT => 20,
+    CURLOPT_CONNECTTIMEOUT => 3,
+    CURLOPT_TIMEOUT => 8,
     CURLOPT_USERAGENT => 'retro-kereso/1.0',
 ]);
 $response = curl_exec($curl);
 $status = curl_getinfo($curl, CURLINFO_HTTP_CODE);
-$curlError = curl_error($curl);
 $curlErrno = curl_errno($curl);
 curl_close($curl);
 
+if ($response === false && $curlErrno === CURLE_OPERATION_TIMEDOUT) {
+    respond(504, ['error' => 'A Wayback Machine túl lassan válaszolt. Próbáld újra.']);
+}
+
 if ($response === false || $status < 200 || $status >= 300) {
-    respond(502, [
-        'error' => 'Nem sikerült elérni a Wayback Machine-t.',
-        'upstreamStatus' => $status,
-        'curlErrno' => $curlErrno,
-        'curlError' => $curlError,
-    ]);
+    respond(502, ['error' => 'Nem sikerült elérni a Wayback Machine-t.']);
 }
 
 $rows = json_decode($response, true);
