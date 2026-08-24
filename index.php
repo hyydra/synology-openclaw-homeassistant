@@ -66,11 +66,11 @@ $buildVersion = trim((string) file_get_contents(__DIR__ . '/VERSION'));
         <div id="emptyState" class="empty-state"><p>A találatok itt jelennek meg.</p></div>
       </section>
     </section>
+    <div class="build-version">
+      build <?= htmlspecialchars($buildVersion, ENT_QUOTES, 'UTF-8') ?> · Credits: CDX/Wayback workflow informed by jsvine/waybackpack and hartator/wayback-machine-downloader
+    </div>
     <?php endif; ?>
   </main>
-  <div class="build-version">
-    build <?= htmlspecialchars($buildVersion, ENT_QUOTES, 'UTF-8') ?> · Credits: CDX/Wayback workflow informed by jsvine/waybackpack and hartator/wayback-machine-downloader
-  </div>
   <script src="/app.js?v=<?= htmlspecialchars($appVersion, ENT_QUOTES, 'UTF-8') ?>" type="module"></script>
 </body>
 </html>
