@@ -139,3 +139,238 @@ function retroNormalizeArchiveText(string $text): string
     $text = preg_replace('/[\p{Z}\s]+/u', ' ', $text) ?? $text;
     return trim($text);
 }
+
+/** @return array<int,array{domain:string,limit:int}> */
+function retroLoadSources(string $path): array
+{
+    if (!is_file($path)) {
+        throw new RuntimeException('A forráskonfiguráció nem található.');
+    }
+
+    $raw = require $path;
+    if (!is_array($raw)) {
+        throw new RuntimeException('A forráskonfiguráció hibás.');
+    }
+
+    $normalized = [];
+    $order = [];
+    foreach ($raw as $entry) {
+        if (is_string($entry)) {
+            $entry = ['domain' => $entry];
+        }
+        if (!is_array($entry)) {
+            continue;
+        }
+
+        $domain = trim((string) ($entry['domain'] ?? ''));
+        if ($domain === '' || str_contains($domain, '://') || str_contains($domain, '/') || str_contains($domain, '?') || str_contains($domain, '#')) {
+            continue;
+        }
+
+        $domain = rtrim(strtolower($domain), '.');
+        if (function_exists('idn_to_ascii')) {
+            $ascii = idn_to_ascii($domain, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46);
+            if (is_string($ascii) && $ascii !== '') {
+                $domain = strtolower($ascii);
+            }
+        }
+        if (!preg_match('/^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/', $domain)) {
+            continue;
+        }
+
+        $limit = (int) ($entry['limit'] ?? 150);
+        $limit = max(1, min(200, $limit));
+        if (!array_key_exists($domain, $normalized)) {
+            $order[] = $domain;
+        }
+        $normalized[$domain] = ['domain' => $domain, 'limit' => $limit];
+    }
+
+    $result = [];
+    foreach ($order as $domain) {
+        $result[] = $normalized[$domain];
+    }
+    return $result;
+}
+
+function retroArchivePath(string $baseDir, string $domain, string $timestamp, string $originalUrl): string
+{
+    $safeDomain = preg_replace('/[^a-z0-9.-]+/i', '_', strtolower($domain)) ?: 'unknown';
+    $safeTimestamp = preg_replace('/[^0-9]/', '', $timestamp) ?: 'unknown';
+    $hash = substr(hash('sha256', $originalUrl), 0, 16);
+    return rtrim($baseDir, '/\\') . DIRECTORY_SEPARATOR . $safeDomain . DIRECTORY_SEPARATOR . $safeTimestamp . '-' . $hash . '.html';
+}
+
+function retroSnapshotExists(PDO $db, string $originalUrl, string $timestamp): bool
+{
+    $statement = $db->prepare('SELECT 1 FROM archive_pages WHERE original_url = :url AND wayback_timestamp = :timestamp LIMIT 1');
+    $statement->execute(['url' => $originalUrl, 'timestamp' => $timestamp]);
+    return $statement->fetchColumn() !== false;
+}
+
+function retroSnapshotId(PDO $db, string $originalUrl, string $timestamp): ?int
+{
+    $statement = $db->prepare('SELECT id FROM archive_pages WHERE original_url = :url AND wayback_timestamp = :timestamp LIMIT 1');
+    $statement->execute(['url' => $originalUrl, 'timestamp' => $timestamp]);
+    $value = $statement->fetchColumn();
+    return $value === false ? null : (int) $value;
+}
+
+/** @param array{domain:string,original:string,timestamp:string,archiveUrl:string} $metadata */
+function retroStoreSnapshot(PDO $db, array $metadata, string $html, string $archiveBaseDir): int
+{
+    $domain = strtolower(trim((string) ($metadata['domain'] ?? '')));
+    $original = trim((string) ($metadata['original'] ?? ''));
+    $timestamp = trim((string) ($metadata['timestamp'] ?? ''));
+    $archiveUrl = trim((string) ($metadata['archiveUrl'] ?? ''));
+    if ($domain === '' || $original === '' || !preg_match('/^\d{14}$/', $timestamp) || $archiveUrl === '') {
+        throw new InvalidArgumentException('Hiányos snapshot metaadat.');
+    }
+
+    $existing = retroSnapshotId($db, $original, $timestamp);
+    if ($existing !== null) {
+        return $existing;
+    }
+
+    $page = retroExtractArchivedPage($html);
+    $path = retroArchivePath($archiveBaseDir, $domain, $timestamp, $original);
+    $directory = dirname($path);
+    if (!is_dir($directory) && !mkdir($directory, 0770, true) && !is_dir($directory)) {
+        throw new RuntimeException('A snapshot könyvtár nem hozható létre.');
+    }
+    if (file_put_contents($path, $html, LOCK_EX) === false) {
+        throw new RuntimeException('A snapshot nem menthető helyben.');
+    }
+    @chmod($path, 0640);
+
+    try {
+        $db->beginTransaction();
+        $statement = $db->prepare(<<<'SQL'
+INSERT INTO archive_pages
+(snapshot_key, domain, original_url, wayback_timestamp, archive_url, local_path, title, content_text, indexed_at)
+VALUES (:snapshot_key, :domain, :original_url, :wayback_timestamp, :archive_url, :local_path, :title, :content_text, :indexed_at)
+SQL);
+        $statement->execute([
+            'snapshot_key' => retroArchiveSnapshotKey($original, $timestamp),
+            'domain' => $domain,
+            'original_url' => $original,
+            'wayback_timestamp' => $timestamp,
+            'archive_url' => $archiveUrl,
+            'local_path' => $path,
+            'title' => $page['title'],
+            'content_text' => $page['text'],
+            'indexed_at' => gmdate('c'),
+        ]);
+        $id = (int) $db->lastInsertId();
+        $db->commit();
+        return $id;
+    } catch (PDOException $error) {
+        if ($db->inTransaction()) {
+            $db->rollBack();
+        }
+        $existing = retroSnapshotId($db, $original, $timestamp);
+        if ($existing !== null) {
+            return $existing;
+        }
+        @unlink($path);
+        throw $error;
+    } catch (Throwable $error) {
+        if ($db->inTransaction()) {
+            $db->rollBack();
+        }
+        @unlink($path);
+        throw $error;
+    }
+}
+
+function retroBuildCdxUrl(string $domain, int $limit): string
+{
+    $limit = max(1, min(200, $limit));
+    $query = http_build_query([
+        'url' => $domain . '/*',
+        'output' => 'json',
+        'fl' => 'timestamp,original,statuscode,mimetype,digest,length',
+        'collapse' => 'digest',
+        'limit' => (string) $limit,
+    ]);
+    return 'https://web.archive.org/cdx/search/cdx?' . $query
+        . '&filter=statuscode%3A200&filter=mimetype%3Atext%2Fhtml';
+}
+
+function retroWaybackUrl(string $timestamp, string $originalUrl, bool $raw = false): string
+{
+    return 'https://web.archive.org/web/' . rawurlencode($timestamp) . ($raw ? 'id_/' : '/') . $originalUrl;
+}
+
+/** @return array{ok:bool,status:int,body:string,error:string,errno:int} */
+function retroHttpGet(string $url, int $connectTimeout = 3, int $timeout = 15): array
+{
+    $curl = curl_init($url);
+    if ($curl === false) {
+        return ['ok' => false, 'status' => 0, 'body' => '', 'error' => 'cURL init failed', 'errno' => -1];
+    }
+    curl_setopt_array($curl, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_CONNECTTIMEOUT => max(1, $connectTimeout),
+        CURLOPT_TIMEOUT => max(1, $timeout),
+        CURLOPT_USERAGENT => 'retro-kereso-indexer/1.0',
+        CURLOPT_HTTPHEADER => ['Accept: text/html,application/json;q=0.9,*/*;q=0.1'],
+    ]);
+    $body = curl_exec($curl);
+    $status = (int) curl_getinfo($curl, CURLINFO_HTTP_CODE);
+    $errno = curl_errno($curl);
+    $error = curl_error($curl);
+    curl_close($curl);
+
+    $ok = is_string($body) && $status >= 200 && $status < 300;
+    return [
+        'ok' => $ok,
+        'status' => $status,
+        'body' => is_string($body) ? $body : '',
+        'error' => $error,
+        'errno' => $errno,
+    ];
+}
+
+function retroFtsQuery(string $query): string
+{
+    preg_match_all('/[\p{L}\p{N}]+/u', $query, $matches);
+    $terms = $matches[0] ?? [];
+    $terms = array_values(array_filter($terms, static fn(string $term): bool => $term !== ''));
+    if ($terms === []) {
+        return '';
+    }
+    return implode(' AND ', array_map(
+        static fn(string $term): string => '"' . str_replace('"', '""', $term) . '"',
+        $terms
+    ));
+}
+
+/** @return array<int,array{title:string,original:string,domain:string,timestamp:string,snippet:string,archiveUrl:string}> */
+function retroSearchArchive(PDO $db, string $query, int $limit = 20): array
+{
+    $ftsQuery = retroFtsQuery(trim($query));
+    if ($ftsQuery === '') {
+        return [];
+    }
+    $limit = max(1, min(50, $limit));
+
+    $sql = <<<SQL
+SELECT
+  COALESCE(NULLIF(p.title, ''), p.original_url) AS title,
+  p.original_url AS original,
+  p.domain AS domain,
+  p.wayback_timestamp AS timestamp,
+  snippet(archive_pages_fts, 1, '', '', ' … ', 28) AS snippet,
+  p.archive_url AS archiveUrl
+FROM archive_pages_fts
+JOIN archive_pages p ON p.id = archive_pages_fts.rowid
+WHERE archive_pages_fts MATCH :query
+ORDER BY bm25(archive_pages_fts), p.wayback_timestamp DESC
+LIMIT {$limit}
+SQL;
+    $statement = $db->prepare($sql);
+    $statement->execute(['query' => $ftsQuery]);
+    return $statement->fetchAll();
+}
