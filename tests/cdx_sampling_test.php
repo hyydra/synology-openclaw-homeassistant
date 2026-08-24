@@ -9,7 +9,7 @@ $url = retroBuildCdxUrl('pecs.hu', 150);
 foreach ([
     'url=pecs.hu%2F%2A',
     'output=json',
-    'collapse=timestamp%3A6',
+    'collapse=urlkey',
     'limit=150',
     'filter=statuscode%3A200',
     'filter=mimetype%3Atext%2Fhtml',

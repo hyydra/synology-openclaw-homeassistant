@@ -306,7 +306,7 @@ function retroBuildCdxUrl(string $domain, int $limit): string
         'url' => $domain . '/*',
         'output' => 'json',
         'fl' => 'timestamp,original,statuscode,mimetype,digest,length',
-        'collapse' => 'timestamp:6',
+        'collapse' => 'urlkey',
         'limit' => (string) $limit,
     ]);
     return 'https://web.archive.org/cdx/search/cdx?' . $query
