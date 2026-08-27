@@ -73,6 +73,61 @@ if ($action === 'logout' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     respond(200, ['ok' => true]);
 }
 
+if ($action === 'ingest' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    try {
+        $expectedToken = retroIngestToken();
+    } catch (RuntimeException $error) {
+        retroLog('error', 'ingest_not_configured', retroExceptionContext($error, [
+            'action' => 'ingest',
+        ]));
+        respond(500, ['error' => 'A feltöltés nincs konfigurálva.']);
+    }
+
+    $providedToken = (string) ($_SERVER['HTTP_X_INGEST_TOKEN'] ?? '');
+    if ($providedToken === '' || !hash_equals($expectedToken, $providedToken)) {
+        retroLog('warning', 'ingest_unauthorized', ['action' => 'ingest']);
+        respond(401, ['error' => 'Érvénytelen ingest token.']);
+    }
+
+    $body = requestBody();
+    $records = is_array($body['records'] ?? null) ? $body['records'] : [];
+
+    try {
+        $database = retroArchiveDatabase();
+        retroEnsureArchiveSchema($database);
+    } catch (Throwable $error) {
+        retroLog('error', 'ingest_db_unavailable', retroExceptionContext($error, ['action' => 'ingest']));
+        respond(500, ['error' => 'A helyi archívum nem érhető el.']);
+    }
+
+    $inserted = 0;
+    $skipped = 0;
+    foreach ($records as $record) {
+        if (!is_array($record)) {
+            $skipped++;
+            continue;
+        }
+        try {
+            if (retroIngestSnapshot($database, $record)) {
+                $inserted++;
+            } else {
+                $skipped++;
+            }
+        } catch (Throwable $error) {
+            $skipped++;
+            retroLog('warning', 'ingest_record_failed', retroExceptionContext($error, ['action' => 'ingest']));
+        }
+    }
+
+    retroLog('info', 'ingest_completed', [
+        'action' => 'ingest',
+        'inserted' => $inserted,
+        'skipped' => $skipped,
+        'total' => count($records),
+    ]);
+    respond(200, ['inserted' => $inserted, 'skipped' => $skipped, 'total' => count($records)]);
+}
+
 if ($action !== 'search') {
     retroLog('warning', 'unknown_api_action', [
         'action' => (string) $action,

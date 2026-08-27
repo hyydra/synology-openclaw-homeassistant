@@ -325,6 +325,45 @@ SQL);
     }
 }
 
+/**
+ * Stores a snapshot pushed by the crawler's periodic sync job, skipping the
+ * local HTML capture step used by the browser-triggered indexer.
+ *
+ * @param array{domain:string,original_url:string,wayback_timestamp:string,archive_url:string,title?:string,content_text?:string} $record
+ * @return bool true when a new row was inserted, false when it already existed
+ */
+function retroIngestSnapshot(PDO $db, array $record): bool
+{
+    $domain = strtolower(trim((string) ($record['domain'] ?? '')));
+    $original = trim((string) ($record['original_url'] ?? ''));
+    $timestamp = trim((string) ($record['wayback_timestamp'] ?? ''));
+    $archiveUrl = trim((string) ($record['archive_url'] ?? ''));
+    $title = retroNormalizeArchiveText((string) ($record['title'] ?? ''));
+    $contentText = retroNormalizeArchiveText((string) ($record['content_text'] ?? ''));
+
+    if ($domain === '' || $original === '' || !preg_match('/^\d{14}$/', $timestamp) || $archiveUrl === '') {
+        throw new InvalidArgumentException('Hiányos ingest metaadat.');
+    }
+
+    $statement = $db->prepare(<<<'SQL'
+INSERT OR IGNORE INTO archive_pages
+(snapshot_key, domain, original_url, wayback_timestamp, archive_url, local_path, title, content_text, indexed_at)
+VALUES (:snapshot_key, :domain, :original_url, :wayback_timestamp, :archive_url, '', :title, :content_text, :indexed_at)
+SQL);
+    $statement->execute([
+        'snapshot_key' => retroArchiveSnapshotKey($original, $timestamp),
+        'domain' => $domain,
+        'original_url' => $original,
+        'wayback_timestamp' => $timestamp,
+        'archive_url' => $archiveUrl,
+        'title' => $title,
+        'content_text' => $contentText,
+        'indexed_at' => gmdate('c'),
+    ]);
+
+    return $statement->rowCount() > 0;
+}
+
 function retroBuildCdxUrl(string $domain, int $limit): string
 {
     $limit = max(1, min(200, $limit));

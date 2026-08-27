@@ -26,6 +26,29 @@ function retroVerifyPassword(string $password, string $hash): bool
     return password_verify($password, $hash);
 }
 
+/**
+ * Shared secret required on the archive ingest endpoint, so only the crawler's
+ * sync script (never a browser) can write new snapshots into the archive.
+ */
+function retroIngestToken(): string
+{
+    $environmentToken = getenv('RETRO_INGEST_TOKEN');
+    if (is_string($environmentToken) && $environmentToken !== '') {
+        return $environmentToken;
+    }
+
+    $configPath = dirname(__DIR__) . '/retro-config.php';
+    if (is_file($configPath)) {
+        $config = require $configPath;
+        $configToken = is_array($config) ? ($config['ingest_token'] ?? null) : null;
+        if (is_string($configToken) && $configToken !== '') {
+            return $configToken;
+        }
+    }
+
+    throw new RuntimeException('RETRO_INGEST_TOKEN nincs beállítva.');
+}
+
 function retroStartSession(): void
 {
     if (session_status() === PHP_SESSION_ACTIVE) {
