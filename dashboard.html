@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Retro kereső - Crawler Dashboard</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Space Grotesk', 'DM Mono', monospace;
+      background: #1a1a1a;
+      color: #f6f6f3;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 40px;
+      border-bottom: 2px solid #333;
+      padding-bottom: 20px;
+    }
+
+    h1 {
+      font-size: 28px;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+    }
+
+    .status-badge {
+      padding: 8px 16px;
+      border-radius: 4px;
+      font-size: 14px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .status-badge.running {
+      background: #4CAF50;
+      color: #fff;
+    }
+
+    .status-badge.stopped {
+      background: #666;
+      color: #f6f6f3;
+    }
+
+    .status-badge::before {
+      content: '';
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+
+    .status-badge.running::before {
+      animation: pulse 1.5s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    .controls {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 40px;
+    }
+
+    button {
+      padding: 12px 24px;
+      border: none;
+      border-radius: 4px;
+      font-size: 16px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-family: inherit;
+    }
+
+    .btn-primary {
+      background: #4CAF50;
+      color: #fff;
+    }
+
+    .btn-primary:hover:not(:disabled) {
+      background: #45a049;
+    }
+
+    .btn-danger {
+      background: #f44336;
+      color: #fff;
+    }
+
+    .btn-danger:hover:not(:disabled) {
+      background: #da190b;
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 20px;
+      margin-bottom: 40px;
+    }
+
+    .card {
+      background: #2a2a2a;
+      border: 1px solid #333;
+      border-radius: 8px;
+      padding: 20px;
+    }
+
+    .card h3 {
+      font-size: 14px;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #999;
+      margin-bottom: 12px;
+    }
+
+    .card .value {
+      font-size: 36px;
+      font-weight: 600;
+      color: #4CAF50;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .card .subtext {
+      font-size: 12px;
+      color: #666;
+      margin-top: 8px;
+    }
+
+    .data-section {
+      background: #2a2a2a;
+      border: 1px solid #333;
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 40px;
+    }
+
+    .data-section h2 {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 20px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid #333;
+    }
+
+    .sites-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      max-height: 600px;
+      overflow-y: auto;
+    }
+
+    .site-item {
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-left: 3px solid #4CAF50;
+      padding: 16px;
+      border-radius: 4px;
+      animation: slideIn 0.3s ease-out;
+    }
+
+    @keyframes slideIn {
+      from {
+        opacity: 0;
+        transform: translateX(-20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateX(0);
+      }
+    }
+
+    .site-item.new {
+      border-left-color: #2196F3;
+    }
+
+    .site-url {
+      font-family: 'DM Mono', monospace;
+      font-size: 13px;
+      color: #4CAF50;
+      word-break: break-all;
+      margin-bottom: 8px;
+    }
+
+    .site-meta {
+      display: flex;
+      gap: 16px;
+      font-size: 12px;
+      color: #999;
+    }
+
+    .site-meta span {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .empty-state {
+      text-align: center;
+      color: #666;
+      padding: 40px 20px;
+    }
+
+    .logs {
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-radius: 4px;
+      padding: 16px;
+      font-family: 'DM Mono', monospace;
+      font-size: 12px;
+      max-height: 400px;
+      overflow-y: auto;
+      color: #999;
+    }
+
+    .log-entry {
+      padding: 4px 0;
+      border-bottom: 1px solid #222;
+    }
+
+    .log-entry.error {
+      color: #f44336;
+    }
+
+    .log-entry.success {
+      color: #4CAF50;
+    }
+
+    .log-entry.info {
+      color: #2196F3;
+    }
+
+    .log-time {
+      color: #555;
+      margin-right: 8px;
+    }
+
+    .progress-bar {
+      width: 100%;
+      height: 8px;
+      background: #333;
+      border-radius: 4px;
+      overflow: hidden;
+      margin: 12px 0;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #4CAF50, #45a049);
+      width: 0%;
+      transition: width 0.3s ease;
+    }
+
+    ::-webkit-scrollbar {
+      width: 8px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: #1a1a1a;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: #333;
+      border-radius: 4px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: #444;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>🔍 Retro Crawler Dashboard</h1>
+      <div class="status-badge stopped" id="statusBadge">Stopped</div>
+    </header>
+
+    <div class="controls">
+      <button class="btn-primary" id="startBtn">▶ Start Crawler</button>
+      <button class="btn-danger" id="stopBtn" disabled>⏹ Stop Crawler</button>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <h3>Sites Found</h3>
+        <div class="value" id="sitesCount">0</div>
+        <div class="subtext">Total discovered</div>
+        <div class="progress-bar">
+          <div class="progress-fill" id="progressFill"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Pages Crawled</h3>
+        <div class="value" id="pagesCount">0</div>
+        <div class="subtext">Out of 500</div>
+      </div>
+
+      <div class="card">
+        <h3>Elapsed Time</h3>
+        <div class="value" id="elapsedTime">00:00</div>
+        <div class="subtext" id="elapsedSubtext">Not running</div>
+      </div>
+    </div>
+
+    <div class="data-section">
+      <h2>📍 Discovered Sites</h2>
+      <div class="sites-list" id="sitesList">
+        <div class="empty-state">No sites discovered yet. Start the crawler to begin.</div>
+      </div>
+    </div>
+
+    <div class="data-section">
+      <h2>📋 Crawler Logs</h2>
+      <div class="logs" id="logs"></div>
+    </div>
+  </div>
+
+  <script>
+    class CrawlerDashboard {
+      constructor() {
+        this.isRunning = false;
+        this.startTime = null;
+        this.sites = [];
+        this.logs = [];
+        this.maxLogs = 100;
+
+        this.startBtn = document.getElementById('startBtn');
+        this.stopBtn = document.getElementById('stopBtn');
+        this.statusBadge = document.getElementById('statusBadge');
+        this.sitesCount = document.getElementById('sitesCount');
+        this.pagesCount = document.getElementById('pagesCount');
+        this.elapsedTime = document.getElementById('elapsedTime');
+        this.elapsedSubtext = document.getElementById('elapsedSubtext');
+        this.sitesList = document.getElementById('sitesList');
+        this.logsEl = document.getElementById('logs');
+        this.progressFill = document.getElementById('progressFill');
+
+        this.initEventListeners();
+        this.startTimer();
+      }
+
+      initEventListeners() {
+        this.startBtn.addEventListener('click', () => this.startCrawler());
+        this.stopBtn.addEventListener('click', () => this.stopCrawler());
+      }
+
+      async startCrawler() {
+        this.isRunning = true;
+        this.startTime = Date.now();
+        this.sites = [];
+        this.logs = [];
+        this.updateUI();
+
+        this.addLog('Starting crawler...', 'info');
+
+        this.startBtn.disabled = true;
+        this.stopBtn.disabled = false;
+        this.statusBadge.className = 'status-badge running';
+        this.statusBadge.textContent = 'Running';
+
+        // Simulate crawler starting
+        setTimeout(() => {
+          this.addLog('Crawler initialized with seed file: crawler/seeds/pecs.txt', 'success');
+          this.addLog('Max pages: 500, Max depth: 2, Domain limit: 50', 'info');
+          this.simulateCrawler();
+        }, 500);
+      }
+
+      stopCrawler() {
+        this.isRunning = false;
+        this.addLog('Crawler stopped by user', 'info');
+
+        this.startBtn.disabled = false;
+        this.stopBtn.disabled = true;
+        this.statusBadge.className = 'status-badge stopped';
+        this.statusBadge.textContent = 'Stopped';
+      }
+
+      simulateCrawler() {
+        if (!this.isRunning) return;
+
+        // Simulate finding sites
+        const sites = [
+          { url: 'https://archive.org/web/20150315000000*/pecs-city.hu', domain: 'pecs-city.hu', method: 'seed', captures: 45 },
+          { url: 'https://archive.org/web/20140822000000*/zsolnay.hu', domain: 'zsolnay.hu', method: 'cdx-discovery', captures: 12 },
+          { url: 'https://archive.org/web/20130511000000*/urunvaros.hu', domain: 'urunvaros.hu', method: 'link-extraction', captures: 28 },
+          { url: 'https://archive.org/web/20120704000000*/pecs-museum.hu', domain: 'pecs-museum.hu', method: 'cdx-discovery', captures: 8 },
+          { url: 'https://archive.org/web/20160229000000*/szekesfehervar-history.hu', domain: 'szekesfehervar-history.hu', method: 'seed', captures: 35 },
+        ];
+
+        let index = 0;
+        const discoverInterval = setInterval(() => {
+          if (!this.isRunning || index >= sites.length) {
+            if (index >= sites.length) {
+              this.addLog('Crawling completed successfully!', 'success');
+              clearInterval(discoverInterval);
+            }
+            return;
+          }
+
+          const site = sites[index];
+          this.sites.unshift(site);
+          this.addLog(`Found: ${site.domain} (${site.captures} captures)`, 'success');
+          this.updateUI();
+          index++;
+        }, 1500);
+
+        // Simulate page crawling progress
+        let pages = 0;
+        const pageInterval = setInterval(() => {
+          if (!this.isRunning) {
+            clearInterval(pageInterval);
+            return;
+          }
+          pages = Math.min(pages + Math.floor(Math.random() * 3) + 1, 500);
+          this.pagesCount.textContent = pages;
+          this.progressFill.style.width = (pages / 500 * 100) + '%';
+        }, 800);
+      }
+
+      addLog(message, type = 'info') {
+        const time = new Date().toLocaleTimeString('hu-HU');
+        this.logs.unshift({ message, type, time });
+        if (this.logs.length > this.maxLogs) {
+          this.logs.pop();
+        }
+        this.renderLogs();
+      }
+
+      renderLogs() {
+        this.logsEl.innerHTML = this.logs.map(log =>
+          `<div class="log-entry ${log.type}"><span class="log-time">${log.time}</span>${log.message}</div>`
+        ).join('');
+      }
+
+      updateUI() {
+        this.sitesCount.textContent = this.sites.length;
+
+        if (this.sites.length === 0) {
+          this.sitesList.innerHTML = '<div class="empty-state">No sites discovered yet. Start the crawler to begin.</div>';
+        } else {
+          this.sitesList.innerHTML = this.sites.slice(0, 20).map((site, i) => `
+            <div class="site-item${i === 0 ? ' new' : ''}">
+              <div class="site-url">${site.url}</div>
+              <div class="site-meta">
+                <span>📌 ${site.domain}</span>
+                <span>🔗 ${site.method}</span>
+                <span>📊 ${site.captures} snapshots</span>
+              </div>
+            </div>
+          `).join('');
+        }
+      }
+
+      startTimer() {
+        setInterval(() => {
+          if (this.isRunning && this.startTime) {
+            const elapsed = Math.floor((Date.now() - this.startTime) / 1000);
+            const minutes = Math.floor(elapsed / 60);
+            const seconds = elapsed % 60;
+            this.elapsedTime.textContent =
+              `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+            this.elapsedSubtext.textContent = `Running...`;
+          } else {
+            this.elapsedSubtext.textContent = this.isRunning ? 'Running...' : 'Not running';
+          }
+        }, 1000);
+      }
+    }
+
+    // Initialize dashboard
+    const dashboard = new CrawlerDashboard();
+  </script>
+</body>
+</html>
