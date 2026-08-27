@@ -7,10 +7,10 @@ import logging
 import sys
 from pathlib import Path
 
-from crawler.discover import parse_args as parse_discover_args
+from crawler.discover import build_parser as build_discover_parser
 from crawler.hostinger_upload import HostingerUploader
 from crawler.hostinger_config import HostingerConfig
-from crawler.models import DiscoveryCandidate
+from crawler.orchestrate import CrawlerOrchestrator
 
 
 logging.basicConfig(
@@ -50,96 +50,63 @@ def create_uploader() -> HostingerUploader | None:
     return uploader
 
 
-def simulate_discovery_with_sync(uploader: HostingerUploader, dry_run: bool = False):
-    """Simulate discovery and sync to Hostinger.
+def run_crawler_with_sync(
+    uploader: HostingerUploader | None,
+    dry_run: bool = False,
+    seed_file: str = "crawler/seeds/pecs.txt",
+    max_pages: int = 500,
+    max_depth: int = 2,
+    domain_limit: int = 50,
+) -> dict:
+    """Run actual crawler with Hostinger sync.
 
-    In production, this would be replaced with actual crawler discovery logic.
+    Args:
+        uploader: HostingerUploader instance (None for dry-run)
+        dry_run: Don't upload if True
+        seed_file: Path to seed URLs file
+        max_pages: Maximum pages to crawl
+        max_depth: Maximum link depth
+        domain_limit: Maximum domains
+
+    Returns:
+        Statistics dictionary
     """
-    logger.info("Starting simulated discovery with Hostinger sync...")
+    orchestrator = CrawlerOrchestrator(
+        seed_file=seed_file,
+        max_pages=max_pages,
+        max_depth=max_depth,
+        domain_limit=domain_limit,
+        uploader=uploader,
+        dry_run=dry_run,
+    )
 
-    # Simulated discoveries
-    sites = [
-        {
-            "snapshot_key": "pecs001",
-            "domain": "pecs-city.hu",
-            "original_url": "https://pecs-city.hu",
-            "wayback_timestamp": "20150315120000",
-            "archive_url": "https://archive.org/web/20150315120000/https://pecs-city.hu",
-            "title": "Pécs City - Historical Information",
-            "content_text": "Welcome to Pécs, a historic city in southern Hungary...",
-            "local_path": "",
-        },
-        {
-            "snapshot_key": "zsolnay001",
-            "domain": "zsolnay.hu",
-            "original_url": "https://zsolnay.hu",
-            "wayback_timestamp": "20140822120000",
-            "archive_url": "https://archive.org/web/20140822120000/https://zsolnay.hu",
-            "title": "Zsolnay Porcelain Factory",
-            "content_text": "The Zsolnay Porcelain Manufactory is a historic...",
-            "local_path": "",
-        },
-        {
-            "snapshot_key": "urunvaros001",
-            "domain": "urunvaros.hu",
-            "original_url": "https://urunvaros.hu",
-            "wayback_timestamp": "20130511120000",
-            "archive_url": "https://archive.org/web/20130511120000/https://urunvaros.hu",
-            "title": "Ürményes District",
-            "content_text": "The Ürményes district is a historic area...",
-            "local_path": "",
-        },
-    ]
-
-    uploaded = 0
-    failed = 0
-
-    for site in sites:
-        if dry_run:
-            logger.info(f"[DRY-RUN] Would upload: {site['domain']}")
-        else:
-            if uploader.upload_site(
-                snapshot_key=site["snapshot_key"],
-                domain=site["domain"],
-                original_url=site["original_url"],
-                wayback_timestamp=site["wayback_timestamp"],
-                archive_url=site["archive_url"],
-                title=site["title"],
-                content_text=site["content_text"],
-                local_path=site["local_path"],
-            ):
-                uploaded += 1
-                logger.info(f"✓ Uploaded: {site['domain']}")
-            else:
-                failed += 1
-                logger.warning(f"✗ Failed: {site['domain']}")
-
-    logger.info(f"\nSync complete: {uploaded} uploaded, {failed} failed")
-    return uploaded, failed
+    stats = orchestrator.run()
+    return stats
 
 
 def main(argv: list[str] | None = None) -> int:
     """Run crawler with Hostinger sync."""
-    parser = argparse.ArgumentParser(
-        description="Discover historical Hungarian/Pécs web sources with Hostinger sync"
-    )
-    parser.add_argument("--validate-only", action="store_true", help="Only validate config")
-    parser.add_argument("--dry-run", action="store_true", help="Simulate without uploading")
-    parser.add_argument("--show-config", action="store_true", help="Show Hostinger config")
+    discover_parser = build_discover_parser()
 
-    args = parser.parse_args(argv)
+    # Add Hostinger-specific arguments
+    discover_parser.add_argument("--validate-only", action="store_true", help="Only validate config")
+    discover_parser.add_argument("--show-config", action="store_true", help="Show Hostinger config")
+
+    args = discover_parser.parse_args(argv)
 
     if args.show_config:
         HostingerConfig.print_config()
         return 0
 
-    if args.validate_only or not (args.dry_run):
+    if args.validate_only:
         if not validate_hostinger():
             return 1
-
-    if args.validate_only:
         logger.info("✓ Configuration valid")
         return 0
+
+    if not args.dry_run:
+        if not validate_hostinger():
+            return 1
 
     uploader = None
     try:
@@ -148,14 +115,25 @@ def main(argv: list[str] | None = None) -> int:
             if not uploader:
                 return 1
 
-        uploaded, failed = simulate_discovery_with_sync(uploader, dry_run=args.dry_run)
+        stats = run_crawler_with_sync(
+            uploader=uploader,
+            dry_run=args.dry_run,
+            seed_file=args.seed_file,
+            max_pages=args.max_pages,
+            max_depth=args.max_depth,
+            domain_limit=args.domain_limit,
+        )
 
-        if args.dry_run:
-            logger.info("Dry-run complete (no data uploaded)")
-        else:
-            logger.info(f"Discovery sync complete: {uploaded} sites uploaded")
+        logger.info("\n" + "=" * 50)
+        logger.info("Crawl Statistics:")
+        logger.info(f"  Discovered: {stats['discovered']}")
+        logger.info(f"  Uploaded: {stats['uploaded']}")
+        logger.info(f"  Failed: {stats['failed']}")
+        logger.info(f"  Pages crawled: {stats['pages_crawled']}")
+        logger.info(f"  Success rate: {stats['success_rate']:.1f}%")
+        logger.info("=" * 50)
 
-        return 0 if failed == 0 else 1
+        return 0 if stats['failed'] == 0 else 1
 
     except KeyboardInterrupt:
         logger.info("Interrupted by user")
