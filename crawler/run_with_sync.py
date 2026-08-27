@@ -57,6 +57,8 @@ def run_crawler_with_sync(
     max_pages: int = 500,
     max_depth: int = 2,
     domain_limit: int = 50,
+    discover_orphans: bool = False,
+    sync_every_n_uploads: int = 200,
 ) -> dict:
     """Run actual crawler with Hostinger sync.
 
@@ -67,6 +69,10 @@ def run_crawler_with_sync(
         max_pages: Maximum pages to crawl
         max_depth: Maximum link depth
         domain_limit: Maximum domains
+        discover_orphans: Also follow outbound links from archived pages to
+            find orphaned sites not in the seed list
+        sync_every_n_uploads: Push new sites to Hostinger every N uploads
+            (0 disables auto-sync)
 
     Returns:
         Statistics dictionary
@@ -78,6 +84,8 @@ def run_crawler_with_sync(
         domain_limit=domain_limit,
         uploader=uploader,
         dry_run=dry_run,
+        discover_orphans=discover_orphans,
+        sync_every_n_uploads=sync_every_n_uploads,
     )
 
     stats = orchestrator.run()
@@ -122,6 +130,7 @@ def main(argv: list[str] | None = None) -> int:
             max_pages=args.max_pages,
             max_depth=args.max_depth,
             domain_limit=args.domain_limit,
+            discover_orphans=args.discover_orphans,
         )
 
         logger.info("\n" + "=" * 50)

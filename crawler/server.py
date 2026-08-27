@@ -76,6 +76,7 @@ def _run_crawler(max_pages: int, max_depth: int, domain_limit: int, seed_file: s
         domain_limit=domain_limit,
         uploader=uploader,
         dry_run=False,
+        sync_every_n_uploads=200,
     )
 
     try:
@@ -96,6 +97,15 @@ def _run_crawler(max_pages: int, max_depth: int, domain_limit: int, seed_file: s
             else:
                 state.add_log(f"Failed: {candidate.domain}", "error")
 
+            synced_before = orchestrator._last_synced_at_count
+            orchestrator._maybe_sync_to_hostinger()
+            if orchestrator._last_synced_at_count != synced_before:
+                state.add_log(
+                    f"Auto-synced {orchestrator._last_synced_at_count - synced_before} sites to Hostinger",
+                    "info",
+                )
+
+        orchestrator._maybe_sync_to_hostinger(force=True)
         with state.lock:
             state.stats["discovered"] = orchestrator.discovered_count
             state.stats["uploaded"] = orchestrator.uploaded_count

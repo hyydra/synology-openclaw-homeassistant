@@ -13,9 +13,17 @@ from crawler.cdx import list_captures
 from crawler.normalize import normalize_domain, normalize_url
 from crawler.models import DiscoveryCandidate
 from crawler.hostinger_upload import HostingerUploader
+from crawler.extractors.standard import extract_links_standard
+from crawler.orphans import classify_orphan
+from crawler.models import CdxSummary
+from crawler.sync_to_hostinger import run_sync as sync_to_hostinger, DEFAULT_APP_URL, DEFAULT_INGEST_TOKEN
 
 
 logger = logging.getLogger(__name__)
+
+# How many of a domain's own captured pages to scan for outbound links when
+# --discover-orphans is on. Kept small: this is a sampling step, not a full crawl.
+ORPHAN_SOURCE_PAGE_SAMPLE = 3
 
 
 def _fetch_cdx(url: str, timeout: int = 15) -> str:
@@ -26,6 +34,18 @@ def _fetch_cdx(url: str, timeout: int = 15) -> str:
         return response.text
     except requests.RequestException as exc:
         logger.warning(f"CDX request failed for {url}: {exc}")
+        return ""
+
+
+def _fetch_archived_html(timestamp: str, original_url: str, timeout: int = 15) -> str:
+    """Fetch the raw (unrewritten) archived HTML for one Wayback capture."""
+    raw_url = f"https://web.archive.org/web/{timestamp}id_/{original_url}"
+    try:
+        response = requests.get(raw_url, timeout=timeout, headers={"User-Agent": "retro-kereso-crawler/1.0"})
+        response.raise_for_status()
+        return response.text
+    except requests.RequestException as exc:
+        logger.warning(f"Archived page fetch failed for {raw_url}: {exc}")
         return ""
 
 
@@ -40,6 +60,8 @@ class CrawlerOrchestrator:
         domain_limit: int = 50,
         uploader: HostingerUploader | None = None,
         dry_run: bool = False,
+        discover_orphans: bool = False,
+        sync_every_n_uploads: int = 0,
     ):
         """Initialize crawler orchestrator.
 
@@ -50,6 +72,13 @@ class CrawlerOrchestrator:
             domain_limit: Maximum domains
             uploader: Optional HostingerUploader for syncing
             dry_run: Don't upload if True
+            discover_orphans: If True, also sample outbound links from a few of
+                each seed domain's own archived pages and follow up with a bounded
+                CDX check on any new domain found, yielding it when it qualifies
+                as an orphan (archived elsewhere but reachable only via that link)
+            sync_every_n_uploads: If > 0, push newly discovered sites to the
+                Hostinger-hosted search UI every time this many new sites have
+                been uploaded to Synology (0 disables auto-sync)
         """
         self.seed_file = seed_file
         self.max_pages = max_pages
@@ -57,11 +86,15 @@ class CrawlerOrchestrator:
         self.domain_limit = domain_limit
         self.uploader = uploader
         self.dry_run = dry_run
+        self.discover_orphans = discover_orphans
+        self.sync_every_n_uploads = sync_every_n_uploads
 
         self.discovered_count = 0
         self.uploaded_count = 0
         self.failed_count = 0
         self.pages_crawled = 0
+        self._known_domains: set[str] = set()
+        self._last_synced_at_count = 0
 
     def load_seeds(self) -> list[str]:
         """Load seed URLs from file."""
@@ -101,6 +134,7 @@ class CrawlerOrchestrator:
             if not domain:
                 logger.warning(f"Skipping unparseable seed: {seed}")
                 continue
+            self._known_domains.add(domain)
 
             remaining = self.max_pages - self.discovered_count
             captures = list_captures(f"{domain}/*", _fetch_cdx, limit=min(200, remaining))
@@ -128,6 +162,66 @@ class CrawlerOrchestrator:
                 )
 
                 yield candidate
+                self.discovered_count += 1
+
+            if self.discover_orphans and self.max_depth >= 1 and self.discovered_count < self.max_pages:
+                yield from self._discover_orphans_from(domain, captures)
+
+    def _discover_orphans_from(
+        self,
+        source_domain: str,
+        captures: list[tuple[str, str]],
+    ) -> Generator[DiscoveryCandidate, None, None]:
+        """Sample a few archived pages from one domain and follow outbound links
+        that lead to domains not already known, yielding any that qualify as
+        orphans (archived elsewhere, referenced only via this old link)."""
+        for timestamp, original in captures[:ORPHAN_SOURCE_PAGE_SAMPLE]:
+            if self.discovered_count >= self.max_pages:
+                return
+
+            html = _fetch_archived_html(timestamp, original)
+            if not html:
+                continue
+
+            for link in extract_links_standard(html, base_url=original):
+                if self.discovered_count >= self.max_pages:
+                    return
+
+                normalized = normalize_url(link.url)
+                if not normalized:
+                    continue
+                link_domain = normalize_domain(normalized)
+                if not link_domain or link_domain in self._known_domains:
+                    continue
+                self._known_domains.add(link_domain)
+
+                link_captures = list_captures(f"{link_domain}/*", _fetch_cdx, limit=5)
+                cdx_summary = CdxSummary(capture_count=len(link_captures))
+                is_orphan, reasons = classify_orphan(
+                    live_ok=None,
+                    cdx=cdx_summary,
+                    archived_referrers=1,
+                )
+                if not is_orphan or not link_captures:
+                    continue
+
+                orphan_timestamp, orphan_original = link_captures[0]
+                orphan_normalized = normalize_url(orphan_original)
+                if not orphan_normalized:
+                    continue
+
+                archive_url = f"https://web.archive.org/web/{orphan_timestamp}/{orphan_normalized}"
+                logger.info(f"Orphan found via {source_domain}: {link_domain} ({'; '.join(reasons)})")
+                yield DiscoveryCandidate(
+                    url=orphan_normalized,
+                    domain=link_domain,
+                    discovery_source_url=archive_url,
+                    discovery_method="link-extraction",
+                    live_state="unknown",
+                    orphan_evidence=True,
+                    anchor_text=link.anchor_text,
+                    review_state="new",
+                )
                 self.discovered_count += 1
 
     def process_candidate(
@@ -204,12 +298,38 @@ class CrawlerOrchestrator:
                 if self.pages_crawled % 10 == 0:
                     logger.info(f"Progress: {self.pages_crawled} pages, {self.discovered_count} discovered")
 
+                self._maybe_sync_to_hostinger()
+
         except KeyboardInterrupt:
             logger.info("Crawl interrupted by user")
         except Exception as e:
             logger.error(f"Crawl error: {e}", exc_info=True)
 
+        self._maybe_sync_to_hostinger(force=True)
         return self.get_stats()
+
+    def _maybe_sync_to_hostinger(self, force: bool = False) -> None:
+        """Push newly uploaded sites to Hostinger every sync_every_n_uploads uploads.
+
+        `force` triggers one final sync at the end of the run so the last
+        partial batch (fewer than the threshold) still reaches Hostinger.
+        """
+        if self.sync_every_n_uploads <= 0 or self.dry_run:
+            return
+
+        due = self.uploaded_count - self._last_synced_at_count >= self.sync_every_n_uploads
+        if not (due or (force and self.uploaded_count > self._last_synced_at_count)):
+            return
+
+        logger.info(f"Auto-sync: pushing new sites to Hostinger ({self.uploaded_count} uploaded so far)...")
+        try:
+            result = sync_to_hostinger(DEFAULT_APP_URL, DEFAULT_INGEST_TOKEN)
+            logger.info(f"Auto-sync complete: {result['synced']} rows synced")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"Auto-sync to Hostinger failed (will retry next threshold): {exc}")
+            return
+
+        self._last_synced_at_count = self.uploaded_count
 
     def get_stats(self) -> dict:
         """Get crawl statistics."""
