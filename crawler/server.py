@@ -148,7 +148,7 @@ def api_sites():
 @app.route("/api/start", methods=["POST"])
 def api_start():
     body = request.get_json(silent=True) or {}
-    max_pages = int(body.get("max_pages", 500))
+    max_pages = int(body.get("max_pages", 100_000))
     max_depth = int(body.get("max_depth", 2))
     domain_limit = int(body.get("domain_limit", 50))
     seed_file = body.get("seed_file", "crawler/seeds/pecs.txt")

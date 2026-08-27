@@ -278,6 +278,17 @@
       transition: width 0.3s ease;
     }
 
+    .progress-fill.active {
+      background: linear-gradient(90deg, #4CAF50, #45a049, #4CAF50);
+      background-size: 200% 100%;
+      animation: progress-scan 1.2s linear infinite;
+    }
+
+    @keyframes progress-scan {
+      0% { background-position: 0% 0; }
+      100% { background-position: 200% 0; }
+    }
+
     ::-webkit-scrollbar {
       width: 8px;
     }
@@ -321,7 +332,7 @@
       <div class="card">
         <h3>Pages Crawled</h3>
         <div class="value" id="pagesCount">0</div>
-        <div class="subtext">Out of 500</div>
+        <div class="subtext">No fixed limit</div>
       </div>
 
       <div class="card">
@@ -435,9 +446,9 @@
         const stats = data.stats || {};
         this.sitesCount.textContent = stats.discovered || 0;
         this.pagesCount.textContent = stats.pages_crawled || 0;
-        const maxPages = 500;
-        const pct = Math.min(100, ((stats.pages_crawled || 0) / maxPages) * 100);
-        this.progressFill.style.width = pct + '%';
+        // No fixed target page count, so the bar shows activity rather than percent-to-goal.
+        this.progressFill.style.width = (data.running ? 100 : ((stats.discovered || 0) > 0 ? 100 : 0)) + '%';
+        this.progressFill.classList.toggle('active', data.running);
 
         const minutes = Math.floor((data.elapsed_seconds || 0) / 60);
         const seconds = (data.elapsed_seconds || 0) % 60;
