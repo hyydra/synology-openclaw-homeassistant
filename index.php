@@ -5,15 +5,23 @@ declare(strict_types=1);
 require_once __DIR__ . '/auth.php';
 retroStartSession();
 
+// The crawler control panel (below) calls a separate local service on port
+// 5055 for start/stop/status. It's only ever reachable on the same host or
+// LAN this page is served from, so it's safe to widen connect-src to that
+// one same-host origin rather than opening it up broadly.
+$requestHost = preg_replace('/:\d+$/', '', (string) ($_SERVER['HTTP_HOST'] ?? 'localhost'));
+$crawlerApiBase = 'http://' . $requestHost . ':5055';
+
 header('Cache-Control: no-store');
 header('X-Content-Type-Options: nosniff');
 header('X-Frame-Options: DENY');
 header('Referrer-Policy: no-referrer');
-header("Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'");
+header("Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' {$crawlerApiBase}; frame-ancestors 'none'; base-uri 'self'; form-action 'self'");
 
 $authenticated = retroIsAuthenticated();
 $stylesVersion = (string) filemtime(__DIR__ . '/styles.css');
 $appVersion = (string) filemtime(__DIR__ . '/app.js');
+$crawlerPanelVersion = (string) filemtime(__DIR__ . '/crawler-panel.js');
 $buildVersion = trim((string) file_get_contents(__DIR__ . '/VERSION'));
 ?>
 <!doctype html>
@@ -47,6 +55,19 @@ $buildVersion = trim((string) file_get_contents(__DIR__ . '/VERSION'));
         <button id="logoutButton" class="logout-button" type="button">Kijelentkezés</button>
       </header>
 
+      <section id="crawlerPanel" class="crawler-panel" aria-label="Crawler vezérlő" data-api-base="<?= htmlspecialchars($crawlerApiBase, ENT_QUOTES, 'UTF-8') ?>">
+        <div class="crawler-heading">
+          <h2>Crawler</h2>
+          <span id="crawlerStatus" class="crawler-status crawler-status--stopped">Stopped</span>
+        </div>
+        <div class="crawler-controls">
+          <button id="crawlerStartButton" class="crawler-button crawler-button--start" type="button">▶ Start</button>
+          <button id="crawlerStopButton" class="crawler-button crawler-button--stop" type="button" disabled>■ Stop</button>
+          <span id="crawlerStats" class="crawler-stats"></span>
+        </div>
+        <div id="crawlerLog" class="crawler-log" aria-live="polite"></div>
+      </section>
+
       <form id="searchForm" class="search-form">
         <label for="query">Kulcsszavas keresés</label>
         <p class="search-description">Keress kulcsszavakra Pécs és környéke archivált weboldalain. A találatok a Wayback Machine-ből helyben indexelt oldalak szövegében keresnek.</p>
@@ -72,5 +93,8 @@ $buildVersion = trim((string) file_get_contents(__DIR__ . '/VERSION'));
     <?php endif; ?>
   </main>
   <script src="/app.js?v=<?= htmlspecialchars($appVersion, ENT_QUOTES, 'UTF-8') ?>" type="module"></script>
+  <?php if ($authenticated): ?>
+  <script src="/crawler-panel.js?v=<?= htmlspecialchars($crawlerPanelVersion, ENT_QUOTES, 'UTF-8') ?>" type="module"></script>
+  <?php endif; ?>
 </body>
 </html>
