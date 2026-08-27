@@ -348,10 +348,7 @@
     class CrawlerDashboard {
       constructor() {
         this.isRunning = false;
-        this.startTime = null;
-        this.sites = [];
-        this.logs = [];
-        this.maxLogs = 100;
+        this.seenSiteKeys = new Set();
 
         this.startBtn = document.getElementById('startBtn');
         this.stopBtn = document.getElementById('stopBtn');
@@ -365,7 +362,10 @@
         this.progressFill = document.getElementById('progressFill');
 
         this.initEventListeners();
-        this.startTimer();
+        this.pollStatus();
+        this.pollSites();
+        setInterval(() => this.pollStatus(), 1500);
+        setInterval(() => this.pollSites(), 3000);
       }
 
       initEventListeners() {
@@ -374,126 +374,107 @@
       }
 
       async startCrawler() {
-        this.isRunning = true;
-        this.startTime = Date.now();
-        this.sites = [];
-        this.logs = [];
-        this.updateUI();
-
-        this.addLog('Starting crawler...', 'info');
-
         this.startBtn.disabled = true;
-        this.stopBtn.disabled = false;
-        this.statusBadge.className = 'status-badge running';
-        this.statusBadge.textContent = 'Running';
-
-        // Simulate crawler starting
-        setTimeout(() => {
-          this.addLog('Crawler initialized with seed file: crawler/seeds/pecs.txt', 'success');
-          this.addLog('Max pages: 500, Max depth: 2, Domain limit: 50', 'info');
-          this.simulateCrawler();
-        }, 500);
-      }
-
-      stopCrawler() {
-        this.isRunning = false;
-        this.addLog('Crawler stopped by user', 'info');
-
-        this.startBtn.disabled = false;
-        this.stopBtn.disabled = true;
-        this.statusBadge.className = 'status-badge stopped';
-        this.statusBadge.textContent = 'Stopped';
-      }
-
-      simulateCrawler() {
-        if (!this.isRunning) return;
-
-        // Simulate finding sites
-        const sites = [
-          { url: 'https://archive.org/web/20150315000000*/pecs-city.hu', domain: 'pecs-city.hu', method: 'seed', captures: 45 },
-          { url: 'https://archive.org/web/20140822000000*/zsolnay.hu', domain: 'zsolnay.hu', method: 'cdx-discovery', captures: 12 },
-          { url: 'https://archive.org/web/20130511000000*/urunvaros.hu', domain: 'urunvaros.hu', method: 'link-extraction', captures: 28 },
-          { url: 'https://archive.org/web/20120704000000*/pecs-museum.hu', domain: 'pecs-museum.hu', method: 'cdx-discovery', captures: 8 },
-          { url: 'https://archive.org/web/20160229000000*/szekesfehervar-history.hu', domain: 'szekesfehervar-history.hu', method: 'seed', captures: 35 },
-        ];
-
-        let index = 0;
-        const discoverInterval = setInterval(() => {
-          if (!this.isRunning || index >= sites.length) {
-            if (index >= sites.length) {
-              this.addLog('Crawling completed successfully!', 'success');
-              clearInterval(discoverInterval);
-            }
+        try {
+          const res = await fetch('/api/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({}),
+          });
+          if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            alert(data.error || 'Failed to start crawler');
+            this.startBtn.disabled = false;
             return;
           }
-
-          const site = sites[index];
-          this.sites.unshift(site);
-          this.addLog(`Found: ${site.domain} (${site.captures} captures)`, 'success');
-          this.updateUI();
-          index++;
-        }, 1500);
-
-        // Simulate page crawling progress
-        let pages = 0;
-        const pageInterval = setInterval(() => {
-          if (!this.isRunning) {
-            clearInterval(pageInterval);
-            return;
-          }
-          pages = Math.min(pages + Math.floor(Math.random() * 3) + 1, 500);
-          this.pagesCount.textContent = pages;
-          this.progressFill.style.width = (pages / 500 * 100) + '%';
-        }, 800);
-      }
-
-      addLog(message, type = 'info') {
-        const time = new Date().toLocaleTimeString('hu-HU');
-        this.logs.unshift({ message, type, time });
-        if (this.logs.length > this.maxLogs) {
-          this.logs.pop();
+          this.stopBtn.disabled = false;
+        } catch (err) {
+          alert('Could not reach crawler server: ' + err.message);
+          this.startBtn.disabled = false;
         }
-        this.renderLogs();
       }
 
-      renderLogs() {
-        this.logsEl.innerHTML = this.logs.map(log =>
-          `<div class="log-entry ${log.type}"><span class="log-time">${log.time}</span>${log.message}</div>`
+      async stopCrawler() {
+        this.stopBtn.disabled = true;
+        try {
+          await fetch('/api/stop', { method: 'POST' });
+        } catch (err) {
+          alert('Could not reach crawler server: ' + err.message);
+        }
+      }
+
+      async pollStatus() {
+        try {
+          const res = await fetch('/api/status');
+          if (!res.ok) return;
+          const data = await res.json();
+          this.applyStatus(data);
+        } catch (err) {
+          // Server not reachable yet; keep UI as-is.
+        }
+      }
+
+      async pollSites() {
+        try {
+          const res = await fetch('/api/sites?limit=20');
+          if (!res.ok) return;
+          const data = await res.json();
+          this.renderSites(data.sites || []);
+        } catch (err) {
+          // Ignore transient errors.
+        }
+      }
+
+      applyStatus(data) {
+        this.isRunning = data.running;
+        this.startBtn.disabled = data.running;
+        this.stopBtn.disabled = !data.running;
+        this.statusBadge.className = 'status-badge ' + (data.running ? 'running' : 'stopped');
+        this.statusBadge.textContent = data.running ? 'Running' : 'Stopped';
+
+        const stats = data.stats || {};
+        this.sitesCount.textContent = stats.discovered || 0;
+        this.pagesCount.textContent = stats.pages_crawled || 0;
+        const maxPages = 500;
+        const pct = Math.min(100, ((stats.pages_crawled || 0) / maxPages) * 100);
+        this.progressFill.style.width = pct + '%';
+
+        const minutes = Math.floor((data.elapsed_seconds || 0) / 60);
+        const seconds = (data.elapsed_seconds || 0) % 60;
+        this.elapsedTime.textContent =
+          `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+        this.elapsedSubtext.textContent = data.running ? 'Running...' : 'Not running';
+
+        this.renderLogs(data.logs || []);
+      }
+
+      renderLogs(logs) {
+        this.logsEl.innerHTML = logs.slice().reverse().map(log =>
+          `<div class="log-entry ${log.level}"><span class="log-time">${log.time}</span>${log.message}</div>`
         ).join('');
       }
 
-      updateUI() {
-        this.sitesCount.textContent = this.sites.length;
-
-        if (this.sites.length === 0) {
+      renderSites(sites) {
+        if (sites.length === 0) {
           this.sitesList.innerHTML = '<div class="empty-state">No sites discovered yet. Start the crawler to begin.</div>';
-        } else {
-          this.sitesList.innerHTML = this.sites.slice(0, 20).map((site, i) => `
-            <div class="site-item${i === 0 ? ' new' : ''}">
-              <div class="site-url">${site.url}</div>
+          return;
+        }
+
+        this.sitesList.innerHTML = sites.map((site) => {
+          const key = site.domain + site.original_url;
+          const isNew = !this.seenSiteKeys.has(key);
+          this.seenSiteKeys.add(key);
+          return `
+            <div class="site-item${isNew ? ' new' : ''}">
+              <div class="site-url">${site.archive_url || site.original_url}</div>
               <div class="site-meta">
                 <span>📌 ${site.domain}</span>
-                <span>🔗 ${site.method}</span>
-                <span>📊 ${site.captures} snapshots</span>
+                <span>🕒 ${site.wayback_timestamp || 'n/a'}</span>
+                <span>📅 ${site.indexed_at || ''}</span>
               </div>
             </div>
-          `).join('');
-        }
-      }
-
-      startTimer() {
-        setInterval(() => {
-          if (this.isRunning && this.startTime) {
-            const elapsed = Math.floor((Date.now() - this.startTime) / 1000);
-            const minutes = Math.floor(elapsed / 60);
-            const seconds = elapsed % 60;
-            this.elapsedTime.textContent =
-              `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-            this.elapsedSubtext.textContent = `Running...`;
-          } else {
-            this.elapsedSubtext.textContent = this.isRunning ? 'Running...' : 'Not running';
-          }
-        }, 1000);
+          `;
+        }).join('');
       }
     }
 
