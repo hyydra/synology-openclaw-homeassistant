@@ -563,7 +563,7 @@ function retroSearchArchive(PDO $db, string $query, int $limit = 20): array
         }
         $booleanQuery = retroMysqlBooleanQuery($terms);
 
-        $statement = $db->prepare(<<<'SQL'
+        $statement = $db->prepare(<<<SQL
 SELECT
   COALESCE(NULLIF(p.title, ''), p.original_url) AS title,
   p.original_url AS original,
