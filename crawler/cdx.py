@@ -81,3 +81,17 @@ def enumerate_archived_urls(target: str, client: Callable[[str], str], limit: in
         seen.add(original)
         results.append(original)
     return results
+
+
+def list_captures(target: str, client: Callable[[str], str], limit: int = 200) -> list[tuple[str, str]]:
+    """Return unique (timestamp, original_url) pairs from one bounded CDX query."""
+    payload = client(build_cdx_url(target, limit))
+    seen: set[str] = set()
+    results: list[tuple[str, str]] = []
+    for row in _valid_rows(payload):
+        timestamp, original = row[0], row[1]
+        if original in seen:
+            continue
+        seen.add(original)
+        results.append((timestamp, original))
+    return results

@@ -7,11 +7,26 @@ import hashlib
 from pathlib import Path
 from typing import Generator
 
+import requests
+
+from crawler.cdx import list_captures
+from crawler.normalize import normalize_domain, normalize_url
 from crawler.models import DiscoveryCandidate
 from crawler.hostinger_upload import HostingerUploader
 
 
 logger = logging.getLogger(__name__)
+
+
+def _fetch_cdx(url: str, timeout: int = 15) -> str:
+    """Default CDX HTTP client: GET the URL and return its body, or '' on failure."""
+    try:
+        response = requests.get(url, timeout=timeout, headers={"User-Agent": "retro-kereso-crawler/1.0"})
+        response.raise_for_status()
+        return response.text
+    except requests.RequestException as exc:
+        logger.warning(f"CDX request failed for {url}: {exc}")
+        return ""
 
 
 class CrawlerOrchestrator:
@@ -65,39 +80,55 @@ class CrawlerOrchestrator:
             return []
 
     def discover_sites(self) -> Generator[DiscoveryCandidate, None, None]:
-        """Generate discovered sites (placeholder for actual discovery logic).
+        """Discover real archived pages for each seed domain via Wayback CDX.
 
-        In production, this would:
-        1. Fetch Wayback Machine index (CDX)
-        2. Extract links from archived pages
-        3. Validate candidates
-        4. Apply scoring
+        For each seed, queries the CDX API for that domain's captures and
+        yields one DiscoveryCandidate per unique archived URL, each carrying
+        its real Wayback timestamp. Link-extraction from archived pages
+        (deeper than one hop) is not yet wired in here.
         """
         seeds = self.load_seeds()
         if not seeds:
             logger.warning("No seeds available for discovery")
             return
 
-        # Placeholder: Generate candidates from seeds
-        # TODO: Integrate with actual CDX fetcher, link extractor, etc.
-        for i, seed_url in enumerate(seeds[:self.domain_limit]):
+        for seed in seeds[:self.domain_limit]:
             if self.discovered_count >= self.max_pages:
                 logger.info(f"Reached max pages limit: {self.max_pages}")
                 break
 
-            domain = seed_url.split("//")[-1].split("/")[0]
+            domain = normalize_domain(seed)
+            if not domain:
+                logger.warning(f"Skipping unparseable seed: {seed}")
+                continue
 
-            candidate = DiscoveryCandidate(
-                url=seed_url,
-                domain=domain,
-                discovery_source_url="https://archive.org",
-                discovery_method="seed",
-                live_state="archived",
-                review_state="new",
-            )
+            remaining = self.max_pages - self.discovered_count
+            captures = list_captures(f"{domain}/*", _fetch_cdx, limit=min(200, remaining))
+            if not captures:
+                logger.info(f"No CDX captures found for {domain}")
+                continue
 
-            yield candidate
-            self.discovered_count += 1
+            for timestamp, original in captures:
+                if self.discovered_count >= self.max_pages:
+                    break
+
+                normalized = normalize_url(original)
+                if not normalized:
+                    continue
+                url_domain = normalize_domain(normalized) or domain
+
+                archive_url = f"https://web.archive.org/web/{timestamp}/{normalized}"
+                candidate = DiscoveryCandidate(
+                    url=normalized,
+                    domain=url_domain,
+                    discovery_source_url=archive_url,
+                    discovery_method="cdx",
+                    live_state="archived",
+                    review_state="new",
+                )
+
+                yield candidate
+                self.discovered_count += 1
 
     def process_candidate(
         self,
@@ -116,13 +147,13 @@ class CrawlerOrchestrator:
             True if successful, False otherwise
         """
         try:
+            # Extract Wayback timestamp from the archive URL
+            wayback_timestamp = self._extract_timestamp(candidate.discovery_source_url)
+
             # Generate snapshot key
             snapshot_key = hashlib.sha256(
-                (candidate.url + "\n" + candidate.discovery_source_url).encode()
+                (candidate.url + "\n" + wayback_timestamp).encode()
             ).hexdigest()
-
-            # Extract Wayback timestamp from URL if available
-            wayback_timestamp = self._extract_timestamp(candidate.url)
 
             # Upload to Hostinger if enabled
             if self.uploader and not self.dry_run:
@@ -131,7 +162,7 @@ class CrawlerOrchestrator:
                     domain=candidate.domain,
                     original_url=candidate.url,
                     wayback_timestamp=wayback_timestamp,
-                    archive_url=candidate.url,
+                    archive_url=candidate.discovery_source_url,
                     title=title,
                     content_text=content_text,
                 ):
