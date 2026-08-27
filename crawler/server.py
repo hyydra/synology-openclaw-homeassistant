@@ -202,4 +202,8 @@ def api_stop():
 
 
 if __name__ == "__main__":
-    app.run(host="127.0.0.1", port=5055, debug=False)
+    import os
+
+    host = os.getenv("CRAWLER_SERVER_HOST", "127.0.0.1")
+    port = int(os.getenv("CRAWLER_SERVER_PORT", "5055"))
+    app.run(host=host, port=port, debug=False)
