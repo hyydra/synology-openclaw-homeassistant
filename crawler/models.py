@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 
-@dataclass(slots=True)
+@dataclass
 class DiscoveryCandidate:
     url: str
     domain: str
@@ -18,7 +18,7 @@ class DiscoveryCandidate:
     review_state: str = "new"
 
 
-@dataclass(slots=True)
+@dataclass
 class DiscoveryEvidence:
     method: str
     referrer_url: str
@@ -26,14 +26,14 @@ class DiscoveryEvidence:
     archive_referrer_timestamp: str = ""
 
 
-@dataclass(slots=True)
+@dataclass
 class ExtractedLink:
     url: str
     anchor_text: str = ""
     nearby_text: str = ""
 
 
-@dataclass(slots=True)
+@dataclass
 class CdxSummary:
     capture_count: int = 0
     first_timestamp: str = ""
@@ -41,7 +41,7 @@ class CdxSummary:
     representative_archive_url: str = ""
 
 
-@dataclass(slots=True)
+@dataclass
 class ScoreBreakdown:
     pecs: int
     hungary: int

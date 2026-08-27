@@ -22,6 +22,16 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 app = Flask(__name__, static_folder=None)
 
 
+@app.after_request
+def _allow_cross_origin(response):
+    # The search page (served by PHP, a different port) embeds crawler
+    # controls that call this API directly from the browser.
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    return response
+
+
 class CrawlerState:
     """Shared, thread-safe state for the running crawler."""
 
