@@ -7,19 +7,19 @@ from typing import Optional
 
 
 class HostingerConfig:
-    """Configuration for Hostinger MySQL upload."""
+    """Configuration for MariaDB upload (now hosted on Synology NAS)."""
 
-    # Default credentials from Hostinger panel
+    # Default credentials for Synology MariaDB 10 package.
     # You can override these with environment variables:
     # - HOSTINGER_DB_HOST
     # - HOSTINGER_DB_NAME
     # - HOSTINGER_DB_USER
     # - HOSTINGER_DB_PASSWORD
 
-    HOST = os.getenv("HOSTINGER_DB_HOST", "localhost")
-    DATABASE = os.getenv("HOSTINGER_DB_NAME", "u230450852_retrocrawler")
-    USER = os.getenv("HOSTINGER_DB_USER", "u230450852_retrocrawler")
-    PASSWORD = os.getenv("HOSTINGER_DB_PASSWORD", "lQ$cyITcQ5K8PzeyUu5")
+    HOST = os.getenv("HOSTINGER_DB_HOST", "192.168.1.2")
+    DATABASE = os.getenv("HOSTINGER_DB_NAME", "retrocrawler")
+    USER = os.getenv("HOSTINGER_DB_USER", "retrocrawler")
+    PASSWORD = os.getenv("HOSTINGER_DB_PASSWORD", "RetroSyn2024Crawl!")
 
     # Upload settings
     ENABLE_UPLOAD = os.getenv("HOSTINGER_ENABLE_UPLOAD", "true").lower() == "true"
