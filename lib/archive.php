@@ -15,8 +15,64 @@ function retroArchiveDataDir(?string $projectRoot = null): string
     return $projectRoot . DIRECTORY_SEPARATOR . 'data';
 }
 
+/**
+ * Reads optional MySQL connection settings from retro-config.php or environment
+ * variables. Returns null when unset, meaning the caller should use SQLite.
+ *
+ * This exists because some deployments (e.g. a NAS-bundled PHP without SQLite's
+ * FTS5 module) can't run the SQLite full-text search path at all, but already
+ * have a MySQL/MariaDB server with the same archive_pages schema populated by
+ * the crawler.
+ */
+function retroMysqlConfig(): ?array
+{
+    $host = getenv('RETRO_MYSQL_HOST') ?: null;
+    $database = getenv('RETRO_MYSQL_DATABASE') ?: null;
+    $user = getenv('RETRO_MYSQL_USER') ?: null;
+    $password = getenv('RETRO_MYSQL_PASSWORD') ?: null;
+    $port = getenv('RETRO_MYSQL_PORT') ?: null;
+
+    if ($host === null) {
+        $configPath = dirname(__DIR__) . '/retro-config.php';
+        if (is_file($configPath)) {
+            $config = require $configPath;
+            $mysql = is_array($config) ? ($config['mysql'] ?? null) : null;
+            if (is_array($mysql)) {
+                $host = is_string($mysql['host'] ?? null) ? $mysql['host'] : null;
+                $database = is_string($mysql['database'] ?? null) ? $mysql['database'] : null;
+                $user = is_string($mysql['user'] ?? null) ? $mysql['user'] : null;
+                $password = is_string($mysql['password'] ?? null) ? $mysql['password'] : null;
+                $port = $mysql['port'] ?? null;
+            }
+        }
+    }
+
+    if ($host === null || $database === null || $user === null) {
+        return null;
+    }
+
+    return [
+        'host' => $host,
+        'port' => (int) ($port ?: 3306),
+        'database' => $database,
+        'user' => $user,
+        'password' => (string) ($password ?? ''),
+    ];
+}
+
 function retroArchiveDatabase(?string $path = null): PDO
 {
+    if ($path === null) {
+        $mysql = retroMysqlConfig();
+        if ($mysql !== null) {
+            $dsn = "mysql:host={$mysql['host']};port={$mysql['port']};dbname={$mysql['database']};charset=utf8mb4";
+            return new PDO($dsn, $mysql['user'], $mysql['password'], [
+                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+            ]);
+        }
+    }
+
     $path ??= retroArchiveDataDir() . '/retro.sqlite';
     $directory = dirname($path);
     if (!is_dir($directory) && !mkdir($directory, 0770, true) && !is_dir($directory)) {
@@ -44,6 +100,26 @@ function retroRequireFts5(PDO $db): void
 
 function retroEnsureArchiveSchema(PDO $db): void
 {
+    if ($db->getAttribute(PDO::ATTR_DRIVER_NAME) === 'mysql') {
+        $db->exec(<<<'SQL'
+CREATE TABLE IF NOT EXISTS archive_pages (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    snapshot_key VARCHAR(64) UNIQUE NOT NULL,
+    domain VARCHAR(255) NOT NULL,
+    original_url TEXT NOT NULL,
+    wayback_timestamp VARCHAR(14) NOT NULL,
+    archive_url TEXT NOT NULL,
+    local_path TEXT,
+    title TEXT DEFAULT '',
+    content_text LONGTEXT DEFAULT '',
+    indexed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY unique_url_timestamp (original_url(100), wayback_timestamp),
+    FULLTEXT INDEX ft_search (title, content_text)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+SQL);
+        return;
+    }
+
     retroRequireFts5($db);
 
     $db->exec(<<<'SQL'
@@ -345,8 +421,12 @@ function retroIngestSnapshot(PDO $db, array $record): bool
         throw new InvalidArgumentException('Hiányos ingest metaadat.');
     }
 
-    $statement = $db->prepare(<<<'SQL'
-INSERT OR IGNORE INTO archive_pages
+    $isMysql = $db->getAttribute(PDO::ATTR_DRIVER_NAME) === 'mysql';
+    $insertVerb = $isMysql ? 'INSERT IGNORE INTO' : 'INSERT OR IGNORE INTO';
+    $indexedAt = $isMysql ? gmdate('Y-m-d H:i:s') : gmdate('c');
+
+    $statement = $db->prepare(<<<SQL
+{$insertVerb} archive_pages
 (snapshot_key, domain, original_url, wayback_timestamp, archive_url, local_path, title, content_text, indexed_at)
 VALUES (:snapshot_key, :domain, :original_url, :wayback_timestamp, :archive_url, '', :title, :content_text, :indexed_at)
 SQL);
@@ -358,7 +438,7 @@ SQL);
         'archive_url' => $archiveUrl,
         'title' => $title,
         'content_text' => $contentText,
-        'indexed_at' => gmdate('c'),
+        'indexed_at' => $indexedAt,
     ]);
 
     return $statement->rowCount() > 0;
@@ -428,14 +508,87 @@ function retroFtsQuery(string $query): string
     ));
 }
 
+/** @return array<int,string> */
+function retroExtractSearchTerms(string $query): array
+{
+    preg_match_all('/[\p{L}\p{N}]+/u', $query, $matches);
+    return array_values(array_filter($matches[0] ?? [], static fn(string $term): bool => $term !== ''));
+}
+
+function retroMysqlBooleanQuery(array $terms): string
+{
+    return implode(' ', array_map(
+        static fn(string $term): string => '+' . str_replace(['+', '-', '*', '"'], '', $term) . '*',
+        $terms
+    ));
+}
+
+/** Builds a plain-text snippet around the first matching term, since MySQL has no snippet(). */
+function retroBuildPlainSnippet(string $text, array $terms, int $length = 160): string
+{
+    $text = trim($text);
+    if ($text === '') {
+        return '';
+    }
+
+    $lowerText = mb_strtolower($text, 'UTF-8');
+    $position = null;
+    foreach ($terms as $term) {
+        $found = mb_stripos($lowerText, mb_strtolower($term, 'UTF-8'));
+        if ($found !== false) {
+            $position = $found;
+            break;
+        }
+    }
+
+    $start = $position === null ? 0 : max(0, $position - (int) ($length / 3));
+    $snippet = mb_substr($text, $start, $length, 'UTF-8');
+    $prefix = $start > 0 ? '… ' : '';
+    $suffix = ($start + $length) < mb_strlen($text, 'UTF-8') ? ' …' : '';
+    return $prefix . $snippet . $suffix;
+}
+
 /** @return array<int,array{title:string,original:string,domain:string,timestamp:string,snippet:string,archiveUrl:string}> */
 function retroSearchArchive(PDO $db, string $query, int $limit = 20): array
 {
+    $limit = max(1, min(50, $limit));
+
+    if ($db->getAttribute(PDO::ATTR_DRIVER_NAME) === 'mysql') {
+        $terms = retroExtractSearchTerms(trim($query));
+        if ($terms === []) {
+            return [];
+        }
+        $booleanQuery = retroMysqlBooleanQuery($terms);
+
+        $statement = $db->prepare(<<<'SQL'
+SELECT
+  COALESCE(NULLIF(p.title, ''), p.original_url) AS title,
+  p.original_url AS original,
+  p.domain AS domain,
+  p.wayback_timestamp AS timestamp,
+  p.content_text AS content_text,
+  p.archive_url AS archiveUrl
+FROM archive_pages p
+WHERE MATCH(p.title, p.content_text) AGAINST (:query IN BOOLEAN MODE)
+ORDER BY MATCH(p.title, p.content_text) AGAINST (:query IN BOOLEAN MODE) DESC, p.wayback_timestamp DESC
+LIMIT {$limit}
+SQL);
+        $statement->execute(['query' => $booleanQuery]);
+        $rows = $statement->fetchAll();
+
+        foreach ($rows as &$row) {
+            $row['snippet'] = retroBuildPlainSnippet((string) $row['content_text'], $terms);
+            unset($row['content_text']);
+        }
+        unset($row);
+
+        return $rows;
+    }
+
     $ftsQuery = retroFtsQuery(trim($query));
     if ($ftsQuery === '') {
         return [];
     }
-    $limit = max(1, min(50, $limit));
 
     $sql = <<<SQL
 SELECT
