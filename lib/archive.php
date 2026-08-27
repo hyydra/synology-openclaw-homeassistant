@@ -33,7 +33,10 @@ function retroMysqlConfig(): ?array
     $port = getenv('RETRO_MYSQL_PORT') ?: null;
 
     if ($host === null) {
-        $configPath = dirname(__DIR__) . '/retro-config.php';
+        // archive.php lives in lib/, one level deeper than auth.php (which sits at
+        // the project root and reads retro-config.php from dirname(__DIR__) there).
+        // dirname(__DIR__) here is only the project root, so go up one more level.
+        $configPath = dirname(__DIR__, 2) . '/retro-config.php';
         if (is_file($configPath)) {
             $config = require $configPath;
             $mysql = is_array($config) ? ($config['mysql'] ?? null) : null;
