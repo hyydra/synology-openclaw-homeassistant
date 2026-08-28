@@ -23,9 +23,9 @@ class HostingerUploader:
     def __init__(
         self,
         host: str = "localhost",
-        database: str = "u230450852_retrocrawler",
-        user: str = "u230450852_retrocrawler",
-        password: str = "lQ$cyITcQ5K8PzeyUu5",
+        database: str = "",
+        user: str = "",
+        password: str = "",
     ):
         """Initialize Hostinger database connection.
 

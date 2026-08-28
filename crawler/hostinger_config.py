@@ -5,21 +5,38 @@ from __future__ import annotations
 import os
 from typing import Optional
 
+try:
+    # Untracked, git-ignored file for local dev convenience (see .gitignore).
+    # Never commit real credentials here or as hardcoded defaults below -
+    # this file previously had a real password checked into git history.
+    from crawler import local_secrets  # type: ignore
+except ImportError:
+    local_secrets = None
+
+
+def _secret(env_var: str, local_attr: str) -> str:
+    value = os.getenv(env_var)
+    if value:
+        return value
+    if local_secrets is not None:
+        return getattr(local_secrets, local_attr, "")
+    return ""
+
 
 class HostingerConfig:
-    """Configuration for MariaDB upload (now hosted on Synology NAS)."""
+    """Configuration for MariaDB upload (now hosted on Synology NAS).
 
-    # Default credentials for Synology MariaDB 10 package.
-    # You can override these with environment variables:
-    # - HOSTINGER_DB_HOST
-    # - HOSTINGER_DB_NAME
-    # - HOSTINGER_DB_USER
-    # - HOSTINGER_DB_PASSWORD
+    Credentials come from environment variables, or from an untracked
+    crawler/local_secrets.py for local dev convenience. Set the following
+    env vars (or create crawler/local_secrets.py with matching attributes)
+    before running: HOSTINGER_DB_HOST, HOSTINGER_DB_NAME, HOSTINGER_DB_USER,
+    HOSTINGER_DB_PASSWORD.
+    """
 
-    HOST = os.getenv("HOSTINGER_DB_HOST", "192.168.1.2")
-    DATABASE = os.getenv("HOSTINGER_DB_NAME", "retrocrawler")
-    USER = os.getenv("HOSTINGER_DB_USER", "retrocrawler")
-    PASSWORD = os.getenv("HOSTINGER_DB_PASSWORD", "RetroSyn2024Crawl!")
+    HOST = _secret("HOSTINGER_DB_HOST", "HOSTINGER_DB_HOST")
+    DATABASE = _secret("HOSTINGER_DB_NAME", "HOSTINGER_DB_NAME")
+    USER = _secret("HOSTINGER_DB_USER", "HOSTINGER_DB_USER")
+    PASSWORD = _secret("HOSTINGER_DB_PASSWORD", "HOSTINGER_DB_PASSWORD")
 
     # Upload settings
     ENABLE_UPLOAD = os.getenv("HOSTINGER_ENABLE_UPLOAD", "true").lower() == "true"

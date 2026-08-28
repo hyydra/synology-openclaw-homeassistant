@@ -24,8 +24,16 @@ from crawler.hostinger_upload import HostingerUploader
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
+try:
+    from crawler import local_secrets  # type: ignore
+except ImportError:
+    local_secrets = None
+
 DEFAULT_APP_URL = os.getenv("RETRO_APP_URL", "https://pecscitythings.eu")
-DEFAULT_INGEST_TOKEN = os.getenv("RETRO_INGEST_TOKEN", "PxJi5j6ExfHcCpdbFBgTNMg98NkQLft0HKMy3_PlFKc")
+DEFAULT_INGEST_TOKEN = os.getenv(
+    "RETRO_INGEST_TOKEN",
+    getattr(local_secrets, "RETRO_INGEST_TOKEN", "") if local_secrets else "",
+)
 
 
 def fetch_unsynced_batch(uploader: HostingerUploader, batch_size: int) -> list[dict]:

@@ -22,6 +22,7 @@ import requests
 
 from crawler.hostinger_config import HostingerConfig
 from crawler.hostinger_upload import HostingerUploader
+from crawler.sync_to_hostinger import DEFAULT_INGEST_TOKEN
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -120,7 +121,7 @@ def ingest_to_app(app_url: str, token: str, records: list[dict]) -> tuple[int, i
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Import curated Hungarian 1990s domains.")
     parser.add_argument("--ingest-to-app", help="Also POST records to this app's /api.php?action=ingest")
-    parser.add_argument("--ingest-token", default="PxJi5j6ExfHcCpdbFBgTNMg98NkQLft0HKMy3_PlFKc")
+    parser.add_argument("--ingest-token", default=DEFAULT_INGEST_TOKEN)
     parser.add_argument("--skip-synology", action="store_true", help="Skip uploading to Synology MariaDB")
     args = parser.parse_args(argv)
 

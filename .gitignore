@@ -5,3 +5,4 @@
 /retro-config.php
 *.log
 .DS_Store
+crawler/local_secrets.py
