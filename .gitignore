@@ -1,8 +1,0 @@
-/data/*.sqlite
-/data/*.sqlite-*
-/data/archive/
-/config.php
-/retro-config.php
-*.log
-.DS_Store
-crawler/local_secrets.py
